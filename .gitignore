@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+screenshots/
+*.log
+gh.exe
+lcu_client.py
+.env
