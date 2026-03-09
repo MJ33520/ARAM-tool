@@ -102,6 +102,7 @@ Hextech augment recommendation data in this tool is sourced from **[ApexLol.info
 
 - This tool is a personal learning project, provided for reference only, with no guarantee of analysis accuracy
 - This tool is not affiliated with or endorsed by Riot Games or League of Legends
+- This tool **does not read or modify any game data**. It only takes a screenshot of your screen and uses AI to provide reference suggestions. However, Riot may still flag third-party tools as violations. **Use this tool at your own risk and be aware of potential account penalties**
 - Please comply with the game's terms of service when using this tool
 
 ## 📄 License
