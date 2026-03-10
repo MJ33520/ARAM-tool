@@ -37,11 +37,32 @@ pip install -r requirements.txt
 
 ### 4. 启动
 
-双击 `launch.bat`，或：
+**方式A: 命令行启动**
 
-```cmd
+在项目根目录下打开终端，执行：
+
+```
 python main.py
 ```
+
+**方式 B：直接启动（需自行管理 Python 环境）**
+
+适用于已经手动配置好 Python 环境及依赖的用户。
+
+- **脚本启动**：直接双击运行 `launch.bat`。
+
+**方式 C：使用 `uv` 自动化启动**
+
+适用于希望自动管理依赖、避免环境污染的用户。此方式通过 `launch_by_uv.bat` 实现一键配置与运行。
+
+1. **安装 uv**：确保系统已安装 Python 包管理器 [uv](https://docs.astral.sh/uv/getting-started/installation/)。
+2. **配置路径文件**（请确保文件内仅包含配置信息，无多余空格或换行）：
+   - **LOL_LAUNCHER_PATH**：在项目根目录下创建一个名为 `LOL_LAUNCHER_PATH` 的文件，写入英雄联盟客户端的完整路径。
+     - *示例：`D:\Tencent\WeGameApps\英雄联盟\Launcher\Client.exe`*
+   - **GEMINI_API_KEY**：在项目根目录下创建一个名为 `GEMINI_API_KEY` 的文件，写入你的 API 密钥。
+     - *示例：`vK9mR2xT5zW8nL4pQ-jA1sB6dF3gH0vC9uN2mY5`*
+3. **执行启动**：
+   - **双击 `launch_by_uv.bat`**：脚本将自动检查 `uv` 环境、安装依赖、加载配置并启动游戏及程序。
 
 ## 🎮 使用方法
 

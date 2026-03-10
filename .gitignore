@@ -10,3 +10,12 @@ test_scraper.py
 test_filter.py
 test_filter2.py
 test_models.py
+
+# ignore uv files if it exists
+.venv/
+.python-version
+pyproject.toml
+uv.lock
+# ignore private config files
+GEMINI_API_KEY
+LOL_LAUNCHER_PATH
