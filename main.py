@@ -47,6 +47,7 @@ _is_analyzing = False
 _is_hextech_analyzing = False
 _global_strategy = None       # 全局攻略文本（缓存）
 _hextech_history = []          # 已选海克斯列表
+_is_auto_grabbing = False     # 是否在后台自动抢英雄
 
 
 class App:
@@ -108,6 +109,19 @@ class App:
         )
         self.btn_fix.pack(side=tk.LEFT, padx=(1, 1))
 
+        sep_fix = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
+                        font=("Microsoft YaHei UI", 11))
+        sep_fix.pack(side=tk.LEFT)
+
+        # 🔄 抢英雄 (Auto-Grab)
+        self.btn_grab = tk.Button(
+            btn_frame, text="🔄 抢英雄", command=self._on_toggle_grab,
+            bg="#1a1a2e", fg="#00ff00", activebackground="#2a2a4e",
+            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
+            padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+        )
+        self.btn_grab.pack(side=tk.LEFT, padx=(1, 1))
+
         # 🔄 数据（ApexLol）
         if APEXLOL_ENABLED:
             sep3 = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
@@ -133,8 +147,8 @@ class App:
 
         # 拖拽
         self._drag_data = {"x": 0, "y": 0}
-        drag_widgets = [self.btn_analyze, self.btn_hextech, self.btn_show, self.btn_fix,
-                        sep1, sep2, self.status_label, btn_frame]
+        drag_widgets = [self.btn_analyze, self.btn_hextech, self.btn_show, self.btn_fix, self.btn_grab,
+                        sep1, sep2, sep_fix, self.status_label, btn_frame]
         if APEXLOL_ENABLED:
             drag_widgets.extend([sep3, self.btn_data])
         for w in drag_widgets:
@@ -211,6 +225,74 @@ class App:
             if name is not None: # 不为None说明点了确定但没输入
                 from tkinter import messagebox
                 messagebox.showwarning("⚠️", T("fix_error"), parent=self.root)
+
+    def _on_toggle_grab(self):
+        """切换后台自动抢替补席状态"""
+        global _is_auto_grabbing
+        if _is_auto_grabbing:
+            _is_auto_grabbing = False
+            self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00")
+            self.status_label.configure(text="已停止自动监控替补席。")
+        else:
+            _is_auto_grabbing = True
+            self.btn_grab.configure(text="⏳ 抢选中", fg="#ffaa00")
+            self.status_label.configure(text="后台监控替补席中，发现心愿单英雄将自动秒抢 (不消耗API额度)！")
+            thread = threading.Thread(target=self._grab_loop, daemon=True)
+            thread.start()
+
+    def _grab_loop(self):
+        """后台轮询抢选英雄"""
+        global _is_auto_grabbing
+        import time, json
+        from lcu_client import get_bench_info, swap_bench_champion
+        
+        wishlist_file = os.path.join(LOG_DIR, "grab_wishlist.json")
+        
+        while _is_auto_grabbing:
+            try:
+                if not os.path.exists(wishlist_file):
+                    self.root.after(0, lambda: self.status_label.configure(text="❌ 未找到 grab_wishlist.json！请先在当前目录下配置。"))
+                    _is_auto_grabbing = False
+                    self.root.after(0, lambda: self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00"))
+                    break
+                
+                with open(wishlist_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    wishlist = set(data.get("wishlist", []))
+                
+                if not wishlist:
+                    time.sleep(1)
+                    continue
+
+                bench_info = get_bench_info()
+                if not bench_info:
+                    time.sleep(1)
+                    continue
+                
+                my_champ = bench_info.get("my_champion_name", "")
+                # 如果当前操作的就是心愿单里的英雄，则暂停抢夺以防误操作换出去
+                if my_champ in wishlist:
+                    time.sleep(1)
+                    continue
+                
+                bench = bench_info.get("bench", [])
+                for b in bench:
+                    if b["name"] in wishlist:
+                        success, current_msg = swap_bench_champion(b["id"])
+                        if success:
+                            msg = f"🎉 成功帮您秒抢到【{b['name']}】！"
+                            log.info(msg)
+                            self.root.after(0, lambda m=msg: self.status_label.configure(text=m))
+                            # 抢到就自动停止轮询
+                            _is_auto_grabbing = False
+                            self.root.after(0, lambda: self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00"))
+                            break
+            except Exception as e:
+                log.error(f"抢英雄监控失败: {e}")
+                time.sleep(2)
+            
+            # 使用本地 LCU 接口轮询，不耗费任何网络 API Token，0.5秒一次毫无压力
+            time.sleep(0.5)
 
     def _run_analysis(self, manual_champion: str = None):
         global _is_analyzing, _global_strategy, _hextech_history
