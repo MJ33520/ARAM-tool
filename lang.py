@@ -117,15 +117,16 @@ STRINGS = {
 
 # ==================== 英雄识别提示 ====================
 _HERO_ID_HINT_ZH = """**英雄识别方法**：
-- 每张英雄卡片下方有英雄名字。**⚠️ 注意**：如果卡片底部有两行字，请**完全忽略最下面一行**（称号），只提取它**上方区域的那行文字**作为英雄名！
+- 每张英雄卡片下方有英雄名字。**⚠️ 注意**：卡片底部或中间区域可能有皮肤名或称号，请**只提取**位于**圆形魄罗头像 (Poro Icon)** 正下方的文字。
 - 上面5张卡片 = 我方，下面5张卡片 = 敌方（如果是水平排列）。
-- **我的英雄定位**：请寻找名字颜色为**金色/亮黄色**的那个英雄。该名称通常精确地位于一个**圆形魄罗头像**（Poro Icon）的正下方。这是锁定本局“我”的最关键视觉特征。
+- **我的英雄定位**：在英雄卡片的**中下部区域**，寻找那个**圆形魄罗头像**。锁定其**正下方、颜色为金色/亮黄色**的文字作为“本局的我”。这是识别玩家本人最核心的视觉参照点。
 - **🆕 新英雄知识库注入**：如果截图或玩家指定了英雄【芸阿娜】（称号：不破之誓），请注意她是一位**新出的射手(ADC)英雄**，主打攻速和普攻伤害。请千万不要把她和辅助装备“骑士之誓”混淆，并务必按**ADC物理攻速流**为她推荐常规出装和符文！
 - 如果实在无法分辨颜色差异，请在输出中说明图像中的视觉特征。"""
 
 _HERO_ID_HINT_EN = """**How to identify champions**:
-- Top 5 cards = My team, Bottom 5 cards = Enemy team
-- **My champion** = The one whose name color is **different** from the other 9 players. Usually gold/yellow, but on some monitor modes it might appear **darker/deeper** instead. The key is to find the name with a **distinct color** (could be brighter or darker)
+- Each champion card has the champion name at the bottom. **⚠️ NOTE**: There might be skin names or titles; **ONLY extract** the text located **directly beneath the circular Poro icon**.
+- Top 5 = My team, Bottom 5 = Enemy team (if horizontally aligned).
+- **My Champion Localization**: In the **middle-bottom area** of the card, locate the **circular Poro icon**. Then, identify the **GOLD/YELLOW** text immediately below it. This is the definitive landmark for the user's champion.
 - **🆕 NEW CHAMPION KNOWLEDGE**: If you see or the user specifies the champion "Yun'ana" (title: The Unbreakable Vow / 芸阿娜), she is a **brand new Marksman (ADC)** who relies on attack speed and on-hit damage. Do NOT confuse her with the tank item "Knight's Vow". You MUST recommend standard ADC/Attack Speed items for her!
 - If you really cannot distinguish the color difference, please state so in your output"""
 
