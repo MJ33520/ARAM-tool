@@ -145,10 +145,22 @@ def lookup_champion(name: str) -> str:
         return ""
 
     cn_title = champ_data.get("cn_title", champ_id)
-    lines = [f"【{cn_title}({champ_id})的海克斯联动数据 - 来源: apexlol.info】"]
+    
+    # --- 提取并去重所有合法的海克斯名称，构建【官方词典】 ---
+    all_valid_names = []
+    for s in champ_data["synergies"]:
+        for hname in s.get("hex_names", []):
+            if hname and hname not in all_valid_names:
+                all_valid_names.append(hname)
+    
+    lines = [f"【{cn_title}({champ_id}) 海克斯联动分析 - 来源: apexlol.info】"]
+    if all_valid_names:
+        lines.append(f"📜 [标准海克斯名单 - 严禁修改字符]: {', '.join(all_valid_names)}")
+        lines.append("-" * 30)
 
     for s in champ_data["synergies"]:
-        hex_names = " + ".join(s.get("hex_names", []))
+        # 使用更清晰的 | 分隔符，防止 AI 误判为一句话
+        hex_names = " | ".join(s.get("hex_names", []))
         rating = s.get("rating", "")
         tiers = " / ".join(s.get("hex_tiers", []))
         tag = s.get("tag", "")

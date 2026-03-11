@@ -168,12 +168,162 @@ class App:
         # 保持置顶
         self._keep_topmost()
 
+        # ===== 状态与缓存 =====
+        self._locked_champion: str = None # 记录手动锁定的英雄名
+        
         # 全局热键 (Ctrl+F12)
         self._start_hotkey_listener()
 
         # 启动时加载 ApexLol 缓存
         if APEXLOL_ENABLED:
             self._init_apexlol_cache()
+
+        # 启动命令行输入监听线程
+        t_input = threading.Thread(target=self._console_input_listener, daemon=True, name="ConsoleInput")
+        t_input.start()
+
+        # 启动 LCU 自动对局监控线程
+        t_lcu = threading.Thread(target=self._lcu_live_monitor, daemon=True, name="LCUMonitor")
+        t_lcu.start()
+
+    def _lcu_live_monitor(self):
+        """后台轮询 LCU Live API，一旦获取到 10 人阵容即自动触发分析。"""
+        global _is_analyzing, _is_hextech_analyzing
+        _match_analyzed_flag = False
+        from lcu_client import get_live_team_rosters
+        import time
+        
+        while True:
+            try:
+                rosters = get_live_team_rosters()
+                if rosters and not _match_analyzed_flag:
+                    # 获取到了完整的阵容，且还没分析过
+                    if not _is_analyzing and not _is_hextech_analyzing:
+                        log.info("🚀 发现新对局！LCU 自动捕获阵容，正在无感生成攻略...")
+                        _match_analyzed_flag = True
+                        # 在主线程中触发纯文本全量分析
+                        self.root.after(0, lambda r=rosters: self._run_lcu_auto_analysis(r))
+                elif not rosters:
+                    # 如果拿不到数据（游戏未开始或结束），重置标记
+                    _match_analyzed_flag = False
+            except Exception as e:
+                pass
+            time.sleep(3)
+
+    def _run_lcu_auto_analysis(self, rosters: dict):
+        """执行 LCU 纯文本全量分析（无截图界面）"""
+        global _is_analyzing, _global_strategy, _hextech_history
+        if _is_analyzing:
+            return
+        
+        _is_analyzing = True
+        self.btn_analyze.configure(text=T("btn_analyzing"), state=tk.DISABLED)
+        self.status_label.configure(text="全自动 LCU 数据分析中...")
+        
+        # 弹窗提示
+        self._on_show()
+        if self.overlay_text:
+            self.overlay_text.configure(state=tk.NORMAL)
+            self.overlay_text.delete(1.0, tk.END)
+            self.overlay_text.insert(tk.END, f"🚀 正在基于客户端全量数据极速生成终极阵容攻略，请稍候...")
+            self.overlay_text.configure(state=tk.DISABLED)
+            
+        def _bg_task():
+            global _is_analyzing, _global_strategy, _hextech_history
+            try:
+                from gemini_analyzer import analyze_lcu_rosters
+                result = analyze_lcu_rosters(rosters, _hextech_history)
+                
+                _global_strategy = result
+                
+                # 在主线程中更新显示
+                self.root.after(0, lambda: self._show_global_result(result))
+            except Exception as e:
+                log.error(f"LCU 分析出错: {e}")
+                self.root.after(0, lambda: self._show_global_result(f"❌ LCU 分析出错:\n{e}"))
+            finally:
+                _is_analyzing = False
+                self.root.after(0, self._restore_analyze_btn)
+                
+        t = threading.Thread(target=_bg_task, daemon=True)
+        t.start()
+
+
+    def _console_input_listener(self):
+        """后台监听命令行输入，支持开局前手动指定英雄。"""
+        print("\n" + "="*50)
+        print("💻 终端手动输入已启用！\n您可以直接在此窗口打字输入英雄名并回车，将立刻为您分析！")
+        print("="*50 + "\n")
+        
+        while True:
+            try:
+                import sys
+                line = sys.stdin.readline()
+                if not line:
+                    _time.sleep(1)
+                    continue
+                
+                cmd = line.strip()
+                if not cmd:
+                    continue
+                
+                # 检查是否正在分析
+                if _is_analyzing or _is_hextech_analyzing:
+                    print(f"[{_time.strftime('%H:%M:%S')}] ⚠️ 当前已有分析任务在进行中，请稍后再试。")
+                    continue
+                
+                print(f"[{_time.strftime('%H:%M:%S')}] 🔒 英雄已锁定: {cmd}。正在为您生成【极速前瞻攻略】...")
+                
+                # 记录锁定的英雄
+                self._locked_champion = cmd
+                
+                # 在主线程中触发纯文本极速分析
+                self.root.after(0, lambda c=cmd: self._run_quick_guide(c))
+                
+            except Exception as e:
+                log.error(f"命令行输入监听异常: {e}")
+                _time.sleep(1)
+
+    def _run_quick_guide(self, champion_name: str):
+        """执行极速前瞻分析（无截图界面）"""
+        global _is_analyzing, _global_strategy
+        if _is_analyzing:
+            return
+        
+        _is_analyzing = True
+        self.btn_analyze.configure(text=T("btn_analyzing"), state=tk.DISABLED)
+        self.status_label.configure(text=T("status_analyzing"))
+        
+        # 弹窗显示前瞻正在进行
+        self._on_show()
+        if self.overlay_text:
+            self.overlay_text.configure(state=tk.NORMAL)
+            self.overlay_text.delete(1.0, tk.END)
+            self.overlay_text.insert(tk.END, f"🚀 正在为您极速生成【{champion_name}】的前瞻攻略，请稍候...")
+            self.overlay_text.configure(state=tk.DISABLED)
+            
+        def _bg_task():
+            global _is_analyzing, _global_strategy, _hextech_history
+            try:
+                from gemini_analyzer import analyze_champion_quick_guide
+                result = analyze_champion_quick_guide(champion_name)
+                
+                # 将该攻略存入全局变量，方便用户在进入游戏前随时查看
+                _global_strategy = result
+                _hextech_history = []
+                
+                # 在主线程中更新显示
+                self.root.after(0, lambda: self._show_global_result(result))
+            except Exception as e:
+                log.error(f"极速分析出错: {e}")
+                self.root.after(0, lambda: self._show_global_result(f"❌ 分析出错:\n{e}"))
+            finally:
+                _is_analyzing = False
+                self.root.after(0, self._restore_analyze_btn)
+                
+        t = threading.Thread(target=_bg_task, daemon=True)
+        t.start()
+
 
     # ==================== 全局分析 ====================
     def _on_analyze(self, manual_champion: str = None):
@@ -219,8 +369,11 @@ class App:
         )
         
         if name and name.strip():
-            log.info(f"用户手动请求覆盖分析，英雄名: {name.strip()}")
-            self._on_analyze(manual_champion=name.strip())
+            cmd = name.strip()
+            log.info(f"用户手动请求锁定/纠错英雄，英雄名: {cmd}")
+            # 更新锁定英雄并在主线程中重新触发全局分析（点击分析按钮，走截图全量分析流程）
+            self._locked_champion = cmd
+            self._on_analyze()
         else:
             if name is not None: # 不为None说明点了确定但没输入
                 from tkinter import messagebox
@@ -298,27 +451,45 @@ class App:
         global _is_analyzing, _global_strategy, _hextech_history
         try:
             t0 = _time.time()
-            log.info(f"🎮 开始全局分析 {'(手动指定:'+manual_champion+')' if manual_champion else ''}")
+            
+            # 使用传入的、或之前控制台/纠错口锁定的英雄
+            target_champion = manual_champion or self._locked_champion
+            
+            # 智能分流：如果能获取到 10 人名单，首选纯文字极速分析
+            from lcu_client import get_live_team_rosters
+            rosters = get_live_team_rosters()
+            
+            if rosters:
+                log.info("[LCU] 🎲 成功捕获 10 人阵容名单，自动切入纯文本极速流！")
+                from gemini_analyzer import analyze_lcu_rosters
+                result = analyze_lcu_rosters(rosters, _hextech_history)
+                log.info(f"[Gemini] ✅ 极速文本分析完成 ({_time.time()-t0:.1f}s)")
+            else:
+                log.info(f"🎮 [回退截图流] 开始全局分析 {'(已锁定英雄: '+target_champion+')' if target_champion else ''}")
+                png_bytes, filepath = capture_screen()
+                log.info(f"[截图] ✅ {len(png_bytes)} bytes ({_time.time()-t0:.1f}s)")
 
-            png_bytes, filepath = capture_screen()
-            log.info(f"[截图] ✅ {len(png_bytes)} bytes ({_time.time()-t0:.1f}s)")
-
-            t1 = _time.time()
-            log.info("[Gemini] ⏳ 全局分析中...")
-            result = analyze_screenshot(
-                png_bytes, 
-                manual_champion=manual_champion,
-                hextech_history=_hextech_history
-            )
-            log.info(f"[Gemini] ✅ {len(result)} 字符 ({_time.time()-t1:.1f}s)")
+                t1 = _time.time()
+                log.info("[Gemini] ⏳ 全局截屏分析中...")
+                result = analyze_screenshot(
+                    png_bytes, 
+                    manual_champion=target_champion,
+                    hextech_history=_hextech_history
+                )
+                log.info(f"[Gemini] ✅ {len(result)} 字符 ({_time.time()-t1:.1f}s)")
 
             _global_strategy = result
+
             
             # 只有在非游戏中（InProgress）阶段才重置历史，确保游戏内更新能继承记忆
             from lcu_client import get_gameflow_phase
             if get_gameflow_phase() != "InProgress":
-                _hextech_history = []  # 新局/加载中重置海克斯历史
-
+                # 重置历史
+                _hextech_history = []
+                # 加载界面分析完毕后，说明游戏开始了，可以解锁英雄，以便下局使用
+                if not manual_champion and self._locked_champion:
+                    log.info(f"🔓 解除英雄锁定: {self._locked_champion}")
+                    self._locked_champion = None
 
             # 在主线程中显示结果
             self.root.after(0, lambda: self._show_global_result(result))

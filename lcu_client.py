@@ -1,0 +1,512 @@
+# -*- coding: utf-8 -*-
+"""
+ARAM 助手 - LCU API 客户端
+
+通过 League Client Update (LCU) API 直接从英雄联盟客户端读取英雄选择数据。
+使用 psutil 从进程命令行参数提取 port 和 token（兼容 WeGame 国服）。
+"""
+
+import json
+import urllib3
+import psutil
+import requests
+
+# 禁用 SSL 警告（LCU 使用自签名证书）
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# 英雄 ID → 中文名映射缓存
+_champion_names: dict[int, str] = {}
+# 英雄 英文ID(如'Tristana') → 中文名映射缓存
+_champion_id_to_cn: dict[str, str] = {}
+
+
+
+# 连接信息缓存（避免每次都扫描进程）
+_cached_port: int | None = None
+_cached_token: str | None = None
+
+
+def _find_lcu_connection() -> tuple[int, str] | None:
+    """
+    通过 psutil 从 LeagueClientUx.exe 进程命令行参数获取 LCU API 的 port 和 token。
+    WeGame 国服的 lockfile 是空的，所以必须从进程参数提取。
+
+    Returns:
+        tuple: (port, token) 或 None
+    """
+    global _cached_port, _cached_token
+
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            if proc.info['name'] == 'LeagueClientUx.exe':
+                args = proc.info['cmdline'] or []
+                port = None
+                token = None
+                for a in args:
+                    if a.startswith('--app-port='):
+                        port = int(a.split('=')[1])
+                    elif a.startswith('--remoting-auth-token='):
+                        token = a.split('=')[1]
+                if port and token:
+                    _cached_port = port
+                    _cached_token = token
+                    return port, token
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    _cached_port = None
+    _cached_token = None
+    return None
+
+
+def _get_connection() -> tuple[int, str] | None:
+    """获取 LCU 连接信息（优先使用缓存，不额外验证）。"""
+    global _cached_port, _cached_token
+    if _cached_port and _cached_token:
+        return _cached_port, _cached_token
+    return _find_lcu_connection()
+
+
+def _invalidate_cache():
+    """清除连接缓存，下次调用会重新扫描进程。"""
+    global _cached_port, _cached_token
+    _cached_port = None
+    _cached_token = None
+
+
+def _lcu_request(port: int, token: str, endpoint: str) -> dict | list | None:
+    """
+    向 LCU API 发送 GET 请求。
+    如果连接被拒绝（客户端已关闭），自动清除缓存。
+
+    Args:
+        port: LCU API 端口
+        token: 认证 token
+        endpoint: API 端点路径
+
+    Returns:
+        JSON 响应数据或 None
+    """
+    url = f"https://127.0.0.1:{port}{endpoint}"
+    try:
+        response = requests.get(
+            url,
+            auth=("riot", token),
+            verify=False,
+            timeout=5,
+        )
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return None
+    except requests.exceptions.ConnectionError:
+        # 连接被拒绝 = 客户端已关闭，清除缓存
+        _invalidate_cache()
+        return None
+    except Exception:
+        return None
+
+
+def _lcu_post(port: int, token: str, endpoint: str) -> tuple[int, dict | str | None]:
+    """
+    向 LCU API 发送 POST 请求。
+
+    Args:
+        port: LCU API 端口
+        token: 认证 token
+        endpoint: API 端点路径
+
+    Returns:
+        tuple: (status_code, response_data)
+    """
+    url = f"https://127.0.0.1:{port}{endpoint}"
+    try:
+        response = requests.post(
+            url,
+            auth=("riot", token),
+            verify=False,
+            timeout=5,
+        )
+        try:
+            data = response.json()
+        except Exception:
+            data = response.text
+        return response.status_code, data
+    except Exception as e:
+        return -1, str(e)
+
+
+def _load_champion_names():
+    """
+    从 DDragon 加载英雄 ID → 中文名映射。
+    优先使用中文(zh_CN)，失败则用英文。
+    """
+    global _champion_names, _champion_id_to_cn
+
+    if _champion_names:
+        return  # 已加载
+
+    try:
+        # 获取最新版本
+        versions_url = "https://ddragon.leagueoflegends.com/api/versions.json"
+        resp = requests.get(versions_url, timeout=10)
+        latest_version = resp.json()[0]
+
+        # 获取中文英雄数据
+        champ_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/data/zh_CN/champion.json"
+        resp = requests.get(champ_url, timeout=10)
+        data = resp.json()["data"]
+
+        for champ_key, champ_info in data.items():
+            champ_id = int(champ_info["key"])
+            champ_name = champ_info["name"]  # 中文名
+            _champion_names[champ_id] = champ_name
+            # 缓存英文ID到中文名的映射 (例如 'Tristana' -> '麦林炮手')
+            _champion_id_to_cn[champ_key] = champ_name
+
+
+        print(f"[LCU] 已加载 {len(_champion_names)} 个英雄名称 (版本 {latest_version})")
+
+    except Exception as e:
+        print(f"[LCU] 加载英雄名称失败: {e}")
+
+
+
+def get_champion_name(champion_id: int) -> str:
+    """获取英雄中文名。"""
+    _load_champion_names()
+    return _champion_names.get(champion_id, f"未知英雄(ID:{champion_id})")
+
+
+# ==================== 英雄选择信息 ====================
+
+def get_champ_select_info() -> dict | None:
+    """
+    获取当前英雄选择阶段的信息。
+
+    Returns:
+        dict 包含:
+        - my_team: list[str] - 我方英雄名称列表
+        - their_team: list[str] - 对方英雄名称列表
+        - phase: str - 当前阶段
+        或 None（客户端未运行/不在英雄选择阶段）
+    """
+    conn = _get_connection()
+    if not conn:
+        print("[LCU] 未找到 LoL 客户端")
+        return None
+    port, token = conn
+    print(f"[LCU] 连接到客户端 (端口: {port})")
+
+    # 获取英雄选择数据
+    session = _lcu_request(port, token, "/lol-champ-select/v1/session")
+    if not session:
+        print("[LCU] 当前不在英雄选择阶段")
+        return None
+
+    # 加载英雄名称
+    _load_champion_names()
+
+    # 解析队伍信息
+    result = {
+        "my_team": [],
+        "their_team": [],
+        "my_champion": None,
+        "phase": session.get("timer", {}).get("phase", "UNKNOWN"),
+    }
+
+    local_cell_id = session.get("localPlayerCellId", -1)
+
+    my_team = session.get("myTeam", [])
+    for player in my_team:
+        champ_id = player.get("championId", 0)
+        if champ_id > 0:
+            name = get_champion_name(champ_id)
+            result["my_team"].append(name)
+            if player.get("cellId") == local_cell_id:
+                result["my_champion"] = name
+
+    their_team = session.get("theirTeam", [])
+    for player in their_team:
+        champ_id = player.get("championId", 0)
+        if champ_id > 0:
+            name = get_champion_name(champ_id)
+            result["their_team"].append(name)
+
+    print(f"[LCU] 🎯 我的英雄: {result['my_champion']}")
+    print(f"[LCU] 我方: {result['my_team']}")
+    print(f"[LCU] 对方: {result['their_team']}")
+    print(f"[LCU] 阶段: {result['phase']}")
+
+    return result
+
+
+def get_lcu_context() -> str | None:
+    """
+    获取 LCU 数据并格式化为可以附加到 Gemini Prompt 的上下文字符串。
+    如果 LCU 不可用，返回 None。
+    """
+    info = get_champ_select_info()
+    if not info:
+        return None
+
+    parts = []
+    if info["my_champion"]:
+        parts.append(f"⭐【我选择的英雄】: {info['my_champion']}（请重点分析这个英雄的出装、符文和打法）")
+    if info["my_team"]:
+        parts.append(f"【LCU 数据 - 我方英雄】: {', '.join(info['my_team'])}")
+    if info["their_team"]:
+        parts.append(f"【LCU 数据 - 对方英雄】: {', '.join(info['their_team'])}")
+
+    if parts:
+        return "\n".join(parts) + "\n（以上为客户端 API 直接读取的数据，请结合截图进行分析）"
+    return None
+
+
+# ==================== Live Client Data (剧中实时数据) ====================
+
+def get_live_game_data() -> dict | None:
+    """
+    从 Live Client Data API (端口 2999) 获取实时游戏数据。
+    该接口在游戏进行中（InProgress）可用，无需 LCU Token。
+    """
+    url = "https://127.0.0.1:2999/liveclientdata/allgamedata"
+    try:
+        # 使用 verify=False 因为 2999 端口也是自签名证书
+        response = requests.get(url, verify=False, timeout=2)
+        if response.status_code == 200:
+            return response.json()
+    except Exception:
+        pass
+    return None
+
+
+def get_live_player_status() -> str | None:
+    """
+    获取游戏中玩家的实时装备和金币信息，用于注入 Prompt。
+    """
+    data = get_live_game_data()
+    if not data:
+        return None
+
+    active_player = data.get("activePlayer", {})
+    all_players = data.get("allPlayers", [])
+    
+    # 找到当前玩家在 allPlayers 列表中的详细信息（为了拿英雄名）
+    summoner_name = active_player.get("summonerName")
+    me = next((p for p in all_players if p.get("summonerName") == summoner_name), None)
+    
+    if not me:
+        return None
+
+    champ_name_en = me.get("championName")
+    _load_champion_names()
+    # 优先从映射表找中文名，找不到则用原名
+    cn_name = _champion_id_to_cn.get(champ_name_en, champ_name_en)
+
+    items = [i.get("displayName") for i in me.get("items", [])]
+    gold = active_player.get("currentGold", 0)
+
+    
+    status = [
+        f"🚀【实时游戏状态 (InProgress)】",
+        f"- 我的英雄: {cn_name}",
+        f"- 当前持有金币: {int(gold)}",
+        f"- 已购装备: {', '.join(items) if items else '无'}"
+    ]
+
+
+
+    # 也可以加入队友/敌方关键大件信息（可选）
+    
+    return "\n".join(status)
+
+
+def get_live_team_rosters() -> dict | None:
+    """
+    基于 Live Client Data API (无须截屏) 获取当局所有玩家的阵容信息。
+    只能在游戏 InProgress 时获取到。
+    
+    Returns:
+        dict 包含:
+        - my_team: list[str] (队友英雄名含自己)
+        - their_team: list[str] (敌人英雄名)
+        - my_champion: str (当前玩家锁定英雄名)
+        - live_context: str (组装好的上下文文本片段)
+    """
+    data = get_live_game_data()
+    if not data:
+        return None
+        
+    all_players = data.get("allPlayers", [])
+    if not all_players or len(all_players) < 2:
+        # 如果获取不到玩家，或者人数不对（比如练习模式可能只有1个，但安全起见）
+        return None
+        
+    active_player = data.get("activePlayer", {})
+    summoner_name = active_player.get("summonerName")
+    
+    _load_champion_names()
+    
+    my_team = []
+    their_team = []
+    my_champion = ""
+    
+    # 获取我的队伍属性 (通常是 'ORDER' 或 'CHAOS')
+    my_team_str = ""
+    for p in all_players:
+        if p.get("summonerName") == summoner_name:
+            my_team_str = p.get("team")
+            my_champ_en = p.get("championName")
+            my_champion = _champion_id_to_cn.get(my_champ_en, my_champ_en)
+            break
+            
+    if not my_team_str: # 如果连自己队伍都找不到
+        return None
+        
+    for p in all_players:
+        champ_en = p.get("championName")
+        cn_name = _champion_id_to_cn.get(champ_en, champ_en)
+        if p.get("team") == my_team_str:
+            my_team.append(cn_name)
+        else:
+            their_team.append(cn_name)
+            
+    context = [
+        f"⭐【我选择的英雄】: {my_champion}（请重点分析我的出装、海克斯和打法）",
+        f"【自动捕获: 我方阵容】: {', '.join(my_team)}",
+        f"【自动捕获: 敌方阵容】: {', '.join(their_team)}",
+        "（以上阵容数据已由客户端完全捕获。敌方阵容无视野区已点亮，请直接以该名单进行终极推演）"
+    ]
+    
+    return {
+        "my_team": my_team,
+        "their_team": their_team,
+        "my_champion": my_champion,
+        "live_context": "\n".join(context)
+    }
+
+# ==================== 秒换英雄功能 ====================
+
+def is_client_running() -> bool:
+    """检测 LoL 客户端是否在运行。"""
+    return _get_connection() is not None
+
+
+def get_gameflow_phase() -> str | None:
+    """
+    获取当前游戏阶段。
+
+    Returns:
+        阶段名称字符串（如 "ChampSelect", "InProgress" 等），或 None
+    """
+    conn = _get_connection()
+    if not conn:
+        return None
+    port, token = conn
+
+    url = f"https://127.0.0.1:{port}/lol-gameflow/v1/gameflow-phase"
+    try:
+        resp = requests.get(url, auth=("riot", token), verify=False, timeout=2)
+        if resp.status_code == 200:
+            return str(resp.json()).strip('"')
+    except Exception:
+        pass
+    return None
+
+
+def get_bench_info() -> dict | None:
+    """
+    获取替补席英雄列表和当前英雄信息。
+
+    Returns:
+        dict 包含:
+        - my_champion_id: int - 我当前的英雄 ID
+        - my_champion_name: str - 我当前的英雄名
+        - bench: list[dict] - 替补席英雄列表 [{"id": int, "name": str}, ...]
+        - bench_enabled: bool - 替补席是否可用
+        或 None（不在英雄选择阶段）
+    """
+    conn = _get_connection()
+    if not conn:
+        return None
+    port, token = conn
+
+    session = _lcu_request(port, token, "/lol-champ-select/v1/session")
+    if not session:
+        return None
+
+    _load_champion_names()
+
+    local_cell_id = session.get("localPlayerCellId", -1)
+    my_champ_id = 0
+
+    for player in session.get("myTeam", []):
+        if player.get("cellId") == local_cell_id:
+            my_champ_id = player.get("championId", 0)
+            break
+
+    bench_ids = session.get("benchChampionIds", [])
+    bench = []
+    for cid in bench_ids:
+        bench.append({
+            "id": cid,
+            "name": get_champion_name(cid),
+        })
+
+    return {
+        "my_champion_id": my_champ_id,
+        "my_champion_name": get_champion_name(my_champ_id) if my_champ_id > 0 else "???",
+        "bench": bench,
+        "bench_enabled": session.get("benchEnabled", False),
+    }
+
+
+def swap_bench_champion(champion_id: int) -> tuple[bool, str]:
+    """
+    与替补席英雄交换。
+
+    Args:
+        champion_id: 要换入的英雄 ID
+
+    Returns:
+        tuple: (成功与否, 消息)
+    """
+    conn = _get_connection()
+    if not conn:
+        return False, "未连接到客户端"
+    port, token = conn
+
+    status_code, data = _lcu_post(
+        port, token,
+        f"/lol-champ-select/v1/session/bench/swap/{champion_id}"
+    )
+
+    if status_code == 200 or status_code == 204:
+        champ_name = get_champion_name(champion_id)
+        return True, f"✅ 已换入 {champ_name}"
+    else:
+        return False, f"❌ 换人失败 (HTTP {status_code}): {data}"
+
+
+if __name__ == "__main__":
+    print("=" * 50)
+    print("🔍 LCU API 测试")
+    print("=" * 50)
+
+    info = get_champ_select_info()
+    if info:
+        print(f"\n🎯 我的英雄: {info['my_champion']}")
+        print(f"我方英雄: {info['my_team']}")
+        print(f"对方英雄: {info['their_team']}")
+        print(f"阶段: {info['phase']}")
+
+        # 测试替补席
+        bench = get_bench_info()
+        if bench:
+            print(f"\n🪑 替补席: {[b['name'] for b in bench['bench']]}")
+    else:
+        print("\n❌ 无法连接到 LoL 客户端或不在英雄选择阶段")
+        print("请确保：")
+        print("  1. 英雄联盟客户端已启动")
+        print("  2. 正在进行英雄选择")

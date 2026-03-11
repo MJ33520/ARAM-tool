@@ -170,10 +170,11 @@ def analyze_screenshot(png_bytes: bytes, manual_champion: str = None,
             prompt = f"📜【本局已选海克斯符文历史】: {history_str}\n" + prompt
             log.info(f"[Gemini] 已注入海克斯历史 ({len(hextech_history)}个)")
 
-        # 用户手动纠错覆盖
+        # 用户手动纠错或命令行直接起手覆盖
         if manual_champion:
-            override_msg = f"⚠️ 玩家已手动强制指定本局使用英雄为：【{manual_champion}】。请直接以该英雄作为你的‘我方英雄’并忽略你在截图中的误判！\n\n"
+            override_msg = f"⚠️ 核心最高指令：玩家已在此刻手动指令本局强制使用英雄：【{manual_champion}】。\n因为是手动指令起手，你**必须完全忽略**前面关于“必须判断截图是否为大乱斗/加载界面”的拦截规则！哪怕截图只显示了纯桌面聊天软件，你也**绝对不许拦截报错**，必须假装你的‘我方英雄’就是【{manual_champion}】，并基于此直接输出完整的三套海克斯与出装攻略！\n\n"
             prompt = override_msg + prompt
+
 
             log.info(f"[Gemini] 用户手动指定英雄: {manual_champion}")
 
@@ -213,6 +214,92 @@ def analyze_screenshot(png_bytes: bytes, manual_champion: str = None,
         error_msg = f"❌ Gemini API 调用失败: {str(e)}"
         log.error(f"[错误] {error_msg}")
         return error_msg
+
+
+def analyze_champion_quick_guide(champion_name: str) -> str:
+    """开局前极速前瞻分析：终端输英雄名 → 三套海克斯+出装（纯文本，无需截图）。"""
+    try:
+        from lang import QUICK_GUIDE_PROMPTS
+        log.info(f"[Gemini] 极速前瞻分析 ({champion_name})...")
+        prompt = QUICK_GUIDE_PROMPTS.get(LANGUAGE, QUICK_GUIDE_PROMPTS["zh"]).format(
+            champion_name=champion_name
+        )
+        
+        # 极速定向数据注入（仅注入这一个英雄，不到 1KB）
+        if APEXLOL_ENABLED:
+            apexlol_context = _build_apexlol_context({"my_champion": champion_name})
+            if apexlol_context:
+                prompt = apexlol_context + "\n\n" + "=" * 60 + "\n\n" + prompt
+                log.info(f"[ApexLol] 注入单英雄定向高分数据: {len(apexlol_context)} 字符")
+
+        import time
+        t_start = time.time()
+        # 纯文本请求，不需要传 png_bytes
+        response = _call_with_retry(
+            model=GEMINI_MODEL,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                temperature=0.3, # 降低随机性，更稳定地提取高分数据
+            ),
+            label="极速前瞻",
+        )
+        log.info(f"[Gemini] 极速前瞻分析完成 ({time.time()-t_start:.1f}s)")
+        return response.text
+
+    except Exception as e:
+        error_msg = f"❌ 极速前瞻失败: {str(e)}"
+        log.error(error_msg)
+        return error_msg
+
+
+def analyze_lcu_rosters(rosters: dict, hextech_history: list[str] = None) -> str:
+    """跳过截图，完全基于 LCU 获取的 10 人阵容进行极速全局全量分析。"""
+    try:
+        from lang import LCU_FULL_STRATEGY_PROMPTS
+        
+        my_champion = rosters.get("my_champion", "未知英雄")
+        lcu_rosters = rosters.get("live_context", "")
+        
+        log.info(f"[Gemini] 纯数据级全局分析 ({my_champion})...")
+        prompt = LCU_FULL_STRATEGY_PROMPTS.get(LANGUAGE, LCU_FULL_STRATEGY_PROMPTS["zh"]).format(
+            my_champion=my_champion,
+            lcu_rosters=lcu_rosters
+        )
+        
+        # 注入海克斯历史
+        if hextech_history:
+            history_str = "、".join(hextech_history)
+            prompt = f"📜【本局已选海克斯符文历史】: {history_str}\n" + prompt
+            log.info(f"[Gemini] 已注入海克斯历史 ({len(hextech_history)}个)")
+            
+        # 极速数据注入（只注入这 10 个特定的英雄，不到 3KB）
+        if APEXLOL_ENABLED:
+            apexlol_context = _build_apexlol_context(rosters)
+            if apexlol_context:
+                prompt = apexlol_context + "\n\n" + "=" * 60 + "\n\n" + prompt
+                log.info(f"[ApexLol] 注入定向本局英雄高分数据: {len(apexlol_context)} 字符")
+
+        import time
+        t_start = time.time()
+        # 纯文本请求
+        response = _call_with_retry(
+            model=GEMINI_MODEL,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                temperature=0.4, # 兼顾稳定与战术变化
+            ),
+            label="纯文本全量分析",
+        )
+        log.info(f"[Gemini] 纯数据全量分析完成 ({time.time()-t_start:.1f}s)")
+        return response.text
+
+    except Exception as e:
+        error_msg = f"❌ LCU 全量分析失败: {str(e)}"
+        log.error(error_msg)
+        return error_msg
+
+
+
 
 
 def analyze_hextech_choice(png_bytes: bytes, global_context: str,
@@ -348,8 +435,11 @@ def _build_apexlol_context(champions: dict) -> str:
 
         load_cache(APEXLOL_CACHE_DIR)
 
-        all_names = champions.get("my_team", []) + champions.get("enemy_team", [])
+        all_names = champions.get("my_team", []) + champions.get("enemy_team", []) + champions.get("their_team", [])
         my_champ = champions.get("my_champion", "")
+        # 如果是单英雄查询，all_names 可能是空的，需要把 my_champ 放进去
+        if not all_names and my_champ:
+            all_names = [my_champ]
 
         return lookup_champions(all_names, highlight_mine=my_champ)
 

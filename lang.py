@@ -410,3 +410,194 @@ Output the full updated strategy in the same format. Focus on:
 Keep it concise, same format as the original strategy.
 """,
 }
+
+# ==================== 极速前瞻攻略 Prompt ====================
+QUICK_GUIDE_PROMPTS = {
+    "zh": """你是一位英雄联盟 **海克斯大乱斗** 模式的资深玩家和分析师。
+这是一份【极速前瞻攻略】，玩家在选就绪或进入游戏前提前指定了英雄名：【{champion_name}】。
+由于目前不知道具体的 5v5 阵容，你需要只针对该英雄本身，提供 3 套海克斯搭配和核心出装推荐。
+
+## 🚀 极速前瞻：{champion_name}
+（注：完整 5v5 分析请在加载界面点击“全局分析”）
+
+⛔ 核心强制规则：
+- **名称绝对对齐**: 对于下方输出的任何海克斯符文名，必须与上方【标准海克斯名单】中的文字**逐字对应**，严禁增减、修改或润色任何字符！
+- **禁用修饰**: 严禁在符文名前后添加描述性文字。
+- **高分优先**: 优先提取并推荐参考资料中评分为 SS、S 或 A 的符文组合方案。
+- **严禁编造**: 如果系统在最上方提供了真实的高分数据字典（apexlol_context），你**绝对必须**从这些数据里挑选真实存在的海克斯名字！
+
+### 🎲 海克斯符文前瞻（3套方案，每套必填4个符文名）
+
+#### 🥇 最佳方案
+1. 【Lv3】**符文名** — 简述作用机制/联动
+2. 【Lv7】**符文名** — 简述
+3. 【Lv11】**符文名** — 简述
+4. 【Lv15】**符文名** — 简述
+- 💎 套装加成或总结
+
+#### 🥈 次选方案
+1. 【Lv3】**符文名** — 简述
+2. 【Lv7】**符文名** — 简述
+3. 【Lv11】**符文名** — 简述
+4. 【Lv15】**符文名** — 简述
+- 📌 方案特点总结
+
+#### 🥉 备选方案
+1. 【Lv3】**符文名** — 简述
+2. 【Lv7】**符文名** — 简述
+3. 【Lv11】**符文名** — 简述
+4. 【Lv15】**符文名** — 简述
+- 📌 方案特点总结
+
+### 🛡️ 核心出装推荐（6件必填）
+要求严格符合该英雄主流定位和伤害类型。
+1. **装备完整名** — 出装理由
+2. **装备完整名** — 出装理由
+...
+6. **装备完整名** — 出装理由
+
+### 💡 核心玩法一句话总结
+""",
+    "en": """You are a League of Legends Hextech Havoc expert.
+This is a [Quick Preview Guide], the player has locked in champion: [{champion_name}].
+Since enemy teams are unknown, provide the 3-tier hextech augment builds and core 6 item builds for this champion generally.
+
+⛔ Hextech Rules:
+- If apexlol_context data is provided above, you MUST prioritize those exact augment names. Do NOT invent augments.
+
+Output Format:
+
+## 🚀 Quick Preview: {champion_name}
+
+### 🎲 Hextech Augments (3 builds x 4 augments)
+
+#### 🥇 Best Build
+1. 【Lv3】**Augment Name** — synergy
+2. 【Lv7】**Augment Name** — synergy
+3. 【Lv11】**Augment Name** — synergy
+4. 【Lv15】**Augment Name** — synergy
+
+#### 🥈 Second Build
+(Same format)
+
+#### 🥉 Third Build
+(Same format)
+
+### 🛡️ Core Build (6 items)
+Give 6 core items with brief reasons.
+
+### 💡 Playstyle Summary
+(One sentence summary)
+""",
+}
+
+# ==================== LCU 纯数据全量策略 Prompt ====================
+LCU_FULL_STRATEGY_PROMPTS = {
+    "zh": """你是一位英雄联盟 **海克斯大乱斗** 模式的最强王者导师。
+这是一把刚刚开始的对局！我通过游戏客户端接口（LCU）获取了确切的双方十人阵容。完全**没有截图**，请直接根据我提供的阵容文字信息进行最深入的战术指导！
+
+双方阵容与我的英雄状态如下：
+{lcu_rosters}
+
+双方阵容与我的英雄状态如下：
+{lcu_rosters}
+
+⛔ 核心强制规则：
+1. **名称绝对对齐**: 对于输出的符文名，必须与上方提供的【标准海克斯名单】中的文字**字符级匹配**，严禁任何润色、扩充或删减！请直接搬运字典中的原词。
+2. **优先使用高分数据**: 优先从提供的 apexlol_context 高分记录表中挑选。
+3. **三套方案要求**: 必须提供 3 套**完全不同**流派的海克斯组合，每套包含完整的 Lv3、Lv7、Lv11、Lv15 共 4 个符文。
+
+## 🚀 LCU 自动追踪分析：玩转 {my_champion}
+
+### 🎲 海克斯符文选择指南（3套流派，每套4个符文）
+
+#### 🥇 【流派标签】最佳适配方案
+1. 【Lv3】**符文名** — 简述作用机制/联动
+2. 【Lv7】**符文名** — 简述
+3. 【Lv11】**符文名** — 简述
+4. 【Lv15】**符文名** — 简述
+- 💎 方案总结说明
+
+#### 🥈 【流派标签】次选打法方案
+1. 【Lv3】**符文名** — 简述
+2. 【Lv7】**符文名** — 简述
+3. 【Lv11】**符文名** — 简述
+4. 【Lv15】**符文名** — 简述
+- 📌 方案特点总结
+
+#### 🥉 【流派标签】奇招/特化方案
+1. 【Lv3】**符文名** — 简述
+2. 【Lv7】**符文名** — 简述
+3. 【Lv11】**符文名** — 简述
+4. 【Lv15】**符文名** — 简述
+- 📌 方案特点总结
+
+### 🛡️ 核心出装推荐
+要求严格结合双方的阵容！
+1. **装备完整名** — 为什么适合打对面这组阵容
+2. **装备完整名** — 出装理由
+...
+6. **装备完整名** — 终局神器
+
+### ⚡ 技能与对局细节
+- **加点建议**: 主X副Y，为什么
+- **关键连招**: 1-2个核心操作连招
+- **对线威胁警告**: 敌方阵容中对我威胁最大的 1-2 个英雄，以及该如何应对（如：“小心对面的石头人R，留个闪现拉扯”）
+
+### 🗡️ 团队配合建议
+用一两句话告诉我，咱们这个我方阵容，谁去开团，谁去抗伤，我应该和谁打配合。
+
+### 🎯 宏观打法节奏
+- **前期Lv1-6**: 该拿人头还是猥琐发育？
+- **中期发力期**: 有了什么装备/海克斯之后可以接团？
+- **后期团战**: 我在这套阵容里的终局制胜手段。
+""",
+    "en": """You are a League of Legends Hextech Havoc Challenger coach.
+Amatch just started! I fetched the exact 10-player rosters via the LCU API. There is **NO screenshot**. Please provide deep tactical guidance using ONLY the provided text roster!
+
+Rosters and my champion state:
+{lcu_rosters}
+
+⛔ Hextech Rules:
+1. **Use Ranked Data**: If apexlol_context is provided, you MUST pick existing high-winrate augments from it.
+2. **Three Build Paths**: Give 3 distinct hextech paths (e.g. Assassin, Bruiser, Mage), each with 4 augments (Lv3/7/11/15). Use real augment names!
+
+Format output:
+
+## 🚀 Auto LCU Analysis: Dominating as {my_champion}
+
+### 🎲 Hextech Paths (3 paths x 4 augments)
+
+#### 🥇 Best: [Playstyle]
+1. 【Lv3】**Augment** — reason
+2. 【Lv7】**Augment** — reason
+3. 【Lv11】**Augment** — reason
+4. 【Lv15】**Augment** — reason
+- 💎 Summary
+
+#### 🥈 Second: [Playstyle]
+(Same pattern...)
+
+#### 🥉 Third: [Playstyle]
+(Same pattern...)
+
+### 🛡️ Core Build (6 Items)
+Strictly adapt this based on the enemy team composition!
+1. **Item Name** — Why against their team
+... (6 items)
+
+### ⚡ Skills & Matchups
+- **Skill Priority**: Max X then Y, why
+- **Core Combos**: 1-2 combos
+- **Matchup Threat**: The 1-2 most dangerous enemies to me and how to avoid/counter.
+
+### 🗡️ Team Synergy
+Who engages? Who peels? Who should I follow?
+
+### 🎯 Game Rhythm
+- **Early**: Playstyle.
+- **Mid**: Powerspikes.
+- **Late**: Win condition in teamfights.
+""",
+}
+

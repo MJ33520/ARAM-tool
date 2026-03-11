@@ -1,21 +1,28 @@
+# System / IDE
 __pycache__/
 *.pyc
-screenshots/
 *.log
-gh.exe
-lcu_client.py
-.env
-apexlol_cache/
-test_scraper.py
-test_filter.py
-test_filter2.py
-test_models.py
+.DS_Store
 
-# ignore uv files if it exists
+# Application Transient Data
+screenshots/
+apexlol_cache/
+*.log
+
+# Private Config & Tools
+.env
+config.py
+GEMINI_API_KEY
+LOL_LAUNCHER_PATH
+gh.exe
+
+# Testing / Scratch
+test_*.py
+/tmp/
+
+# Package Management
 .venv/
 .python-version
 pyproject.toml
 uv.lock
-# ignore private config files
-GEMINI_API_KEY
-LOL_LAUNCHER_PATH
+node_modules/
