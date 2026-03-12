@@ -442,7 +442,95 @@ def get_live_team_rosters() -> dict | None:
         "live_context": "\n".join(context)
     }
 
+def get_full_board_state() -> str | None:
+    """
+    获取全局 10 名玩家的完整状态（英雄、装备、已选海克斯）。
+    专供游戏内（如 Lv7 以后）截屏分析时注入真实背景上下文，替代 AI 对局势的盲目猜测。
+    """
+    data = get_live_game_data()
+    if not data:
+        return None
+
+    all_players = data.get("allPlayers", [])
+    if not all_players:
+        return None
+
+    active_player = data.get("activePlayer", {})
+    summoner_name = active_player.get("summonerName")
+    
+    _load_champion_names()
+    perk_md = get_perk_metadata()
+    
+    # 辅助函数：拍平从 Live Client Data 获取的 runes IDs
+    def flatten_perks(p_obj):
+        ids = []
+        if isinstance(p_obj, dict):
+            for v in p_obj.values():
+                if isinstance(v, (int, float)):
+                    ids.append(int(v))
+                elif isinstance(v, dict):
+                    ids.extend(flatten_perks(v))
+        elif isinstance(p_obj, list):
+            for item in p_obj:
+                ids.extend(flatten_perks(item))
+        return ids
+
+    # 先找到我的队伍名
+    my_team_str = ""
+    for p in all_players:
+        if p.get("summonerName") == summoner_name:
+            my_team_str = p.get("team")
+            break
+
+    if not my_team_str:
+        return None
+
+    my_team_lines = []
+    enemy_team_lines = []
+    my_champ_cn = ""
+
+    for p in all_players:
+        is_me = p.get("summonerName") == summoner_name
+        is_my_team = p.get("team") == my_team_str
+        
+        champ_en = p.get("championName")
+        cn_name = _champion_id_to_cn.get(champ_en, champ_en)
+        if is_me:
+            my_champ_cn = cn_name
+            cn_name = f"⭐【我】{cn_name}"
+            
+        items = [i.get("displayName") for i in p.get("items", [])]
+        item_str = ", ".join(items) if items else "无装备"
+        
+        actual_runes = []
+        all_perk_ids = flatten_perks(p.get("runes", {}))
+        for pid in all_perk_ids:
+            pname = perk_md.get(pid)
+            if pname:
+                actual_runes.append(pname)
+        actual_runes = list(set(actual_runes))
+        rune_str = ", ".join(actual_runes) if actual_runes else "无"
+        
+        line = f"  - {cn_name} | 装备: [{item_str}] | 已选海克斯/符文: [{rune_str}]"
+        
+        if is_my_team:
+            my_team_lines.append(line)
+        else:
+            enemy_team_lines.append(line)
+
+    status = [
+        f"📊【全场 10 人实时状态透视 (基于防Gank雷达扫描绝对真实数据)】",
+        "=== 我方阵营 ===",
+        *my_team_lines,
+        "=== 敌方阵营 ===",
+        *enemy_team_lines,
+        f"\n⚠️核心指令：这是游戏进行中的分析！请注意场上所有人的出装和海克斯动向。我是 {my_champ_cn}，请根据这些真实数据为我提供下一步的选择建议。"
+    ]
+    
+    return "\n".join(status)
+
 # ==================== 秒换英雄功能 ====================
+
 
 def is_client_running() -> bool:
     """检测 LoL 客户端是否在运行。"""

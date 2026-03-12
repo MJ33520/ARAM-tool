@@ -158,11 +158,11 @@ def analyze_screenshot(png_bytes: bytes, manual_champion: str = None,
         prompt = ANALYSIS_PROMPT
         
         # 根据实时状态增强 Prompt
-        from lcu_client import get_live_player_status
-        live_status = get_live_player_status()
+        from lcu_client import get_full_board_state
+        live_status = get_full_board_state()
         if live_status:
             prompt = live_status + "\n" + prompt
-            log.info("[Gemini] 已注入实时游戏数据 (InProgress)")
+            log.info("[Gemini] 已注入全场 10 人实时游戏数据 (InProgress)")
 
         # 注入海克斯历史
         if hextech_history:

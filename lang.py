@@ -169,9 +169,15 @@ PROMPTS = {
 - **敌方**: 英雄1、英雄2、英雄3、英雄4、英雄5
 - **对局概览**: 一句话点明双方阵容核心对抗（如"我方poke消耗 vs 敌方硬开团"）
 
-## ⭐ 我的英雄攻略
+## ⭐ 局内动态海克斯与出装微调 (游戏进行中时必填)
+如果你在截图中看见我正面临 **3 选 1 的海克斯拾取界面**，或者上方注入了【全场 10 人实时状态】：
+1. **当次选择建议**：如果你能看到截图中我可选的 3 个海克斯，请结合全场的真实装备和已有海克斯数据，直接告诉我**这 3 个里选哪个最好**，并简述理由。
+2. **出装调整思路**：基于当前的局势和场上所有人的装备，指出我后续出装需要做什么针对性的调整（例如"对面护甲已成型，尽早做碎星者"）。
+（如果并非在挑选海克斯，仅依据真实状态给出出装微调建议即可）
 
-### 🎲 海克斯符文推荐（提供3套方案）
+## ⭐ 我的完整终极攻略
+
+### 🎲 海克斯符文推荐（提供3套完整方案）
 
 #### 🥇 最佳方案（最高胜率/最强联动）
 每个须说明：符文本身干了什么 + 跟我英雄的哪个技能/特性联动 + 针对对面阵容为何合适
@@ -263,9 +269,15 @@ Please output the following:
 - **Enemy Team**: Champ1, Champ2, Champ3, Champ4, Champ5
 - **Matchup Overview**: One sentence describing the core matchup (e.g. "Our poke vs their hard engage")
 
-## ⭐ My Champion Guide
+## ⭐ Dynamic In-Game Advice (Required if in-game)
+If you see a **choose 1 of 3 hextech augment screen** in the screenshot, or if a "10-player live board state" is injected above:
+1. **Immediate Pick Advice**: If you can see the 3 hextech choices on screen, evaluate them based on the real-time items and existing augments of all 10 players, and explicitly recommend **which one of the 3 to pick right now**.
+2. **Build Adjustments**: Based on the current board state and items of everyone, suggest how I should adjust my upcoming item purchases.
+(If not currently choosing an augment, just give the build adjustment advice based on the live data.)
 
-### 🎲 Hextech Augments (3 builds, 4 augments each)
+## ⭐ My Complete Guide
+
+### 🎲 Hextech Augments (3 full builds, 4 augments each)
 
 #### 🥇 Best Build (highest win-rate / strongest synergy)
 For each: what the augment does + how it synergizes with my champion's abilities + why it's good against the enemy comp
@@ -459,6 +471,9 @@ QUICK_GUIDE_PROMPTS = {
 ...
 6. **装备完整名** — 出装理由
 
+### ✨ 召唤师技能推荐
+推荐 2 个最适合该英雄大乱斗模式的召唤师技能（如 闪现 + 疾跑/雪球/虚弱），并简要说明理由。
+
 ### 💡 核心玩法一句话总结
 """,
     "en": """You are a League of Legends Hextech Havoc expert.
@@ -488,6 +503,9 @@ Output Format:
 
 ### 🛡️ Core Build (6 items)
 Give 6 core items with brief reasons.
+
+### ✨ Summoner Spells
+Recommend 2 optimal summoner spells (e.g., Flash + Mark/Ghost/Exhaust) for ARAM and briefly explain why.
 
 ### 💡 Playstyle Summary
 (One sentence summary)
