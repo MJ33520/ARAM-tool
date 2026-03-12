@@ -316,11 +316,13 @@ def analyze_hextech_choice(png_bytes: bytes, global_context: str,
         )
         
         # =============== 海克斯专属上下文增强 ===============
-        from lcu_client import get_full_board_state
-        live_status = get_full_board_state()
-        if live_status:
-            prompt = live_status + "\n\n" + prompt
-            log.info("[Gemini] 已注入全场 10 人实时游戏数据至海克斯推演")
+        # 移除 full_board_state 以恢复极速体验
+        # 注入极限压缩版 apex 数据，利用该压缩包强制约束 Flash Lite 不乱编海克斯
+        if APEXLOL_ENABLED:
+            apexlol_context = _build_all_champions_context()
+            if apexlol_context:
+                prompt = apexlol_context + "\n\n" + prompt
+                log.info(f"[Gemini] 已注入极限压缩的高分数据至海克斯推演: {len(apexlol_context)} 字符")
         
         response = _call_with_retry(
             model=GEMINI_MODEL,

@@ -353,8 +353,7 @@ HEXTECH_PROMPTS = {
 
 已选海克斯：{hextech_history}
 
-⚠️ 如果上方注入了【全场 10 人实时状态】，这是当前的真实情况（取代开局战略猜测）！
-请务必观察敌方的**实时出装**与**已选海克斯**，以及我方团队的现状，来针对性地推荐当前的这一抓海克斯。
+⚠️ 如果系统在最上方提供了真实的高分数据字典（apexlol.info 数据），你**绝对必须**看准这3个选项，优先推荐字典里出现过的海克斯！严禁推荐任何普通符文（如电刑、征服者等）。
 
 请用以下格式回复（简短！）：
 
@@ -380,8 +379,7 @@ Current global strategy summary:
 
 Already chosen augments: {hextech_history}
 
-⚠️ If a "10-player live board state" is injected above, it represents the exact current reality!
-You MUST observe the enemy's **real-time items** and **augments**, as well as your team's state, to make a highly targeted recommendation for this hextech pick.
+⚠️ If apexlol_context data is provided above, you MUST prioritize those exact augment names. Do NOT invent augments! Under NO circumstances are you allowed to recommend standard League of Legends runes!
 
 Reply in this format (be brief!):
 
