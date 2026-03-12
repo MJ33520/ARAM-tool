@@ -350,6 +350,9 @@ HEXTECH_PROMPTS = {
 
 已选海克斯：{hextech_history}
 
+⚠️ 如果上方注入了【全场 10 人实时状态】，这是当前的真实情况（取代开局战略猜测）！
+请务必观察敌方的**实时出装**与**已选海克斯**，以及我方团队的现状，来针对性地推荐当前的这一抓海克斯。
+
 请用以下格式回复（简短！）：
 
 ## ⚡ 推荐选择
@@ -373,6 +376,9 @@ Current global strategy summary:
 {global_context}
 
 Already chosen augments: {hextech_history}
+
+⚠️ If a "10-player live board state" is injected above, it represents the exact current reality!
+You MUST observe the enemy's **real-time items** and **augments**, as well as your team's state, to make a highly targeted recommendation for this hextech pick.
 
 Reply in this format (be brief!):
 

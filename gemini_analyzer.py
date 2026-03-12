@@ -314,6 +314,14 @@ def analyze_hextech_choice(png_bytes: bytes, global_context: str,
             global_context=context_summary,
             hextech_history=history_str,
         )
+        
+        # =============== 海克斯专属上下文增强 ===============
+        from lcu_client import get_full_board_state
+        live_status = get_full_board_state()
+        if live_status:
+            prompt = live_status + "\n\n" + prompt
+            log.info("[Gemini] 已注入全场 10 人实时游戏数据至海克斯推演")
+        
         response = _call_with_retry(
             model=GEMINI_MODEL,
             contents=[types.Part.from_bytes(data=png_bytes, mime_type="image/jpeg"), prompt],
@@ -336,6 +344,8 @@ def update_global_strategy(current_strategy: str, hextech_history: list[str],
         from lcu_client import get_live_player_status
         live_status = get_live_player_status()
         live_info = live_status + "\n" if live_status else ""
+        
+        history_str = "、".join(hextech_history) if hextech_history else "无"
         
         prompt = live_info + STRATEGY_UPDATE_PROMPTS.get(LANGUAGE, STRATEGY_UPDATE_PROMPTS["zh"]).format(
             current_strategy=current_strategy,
