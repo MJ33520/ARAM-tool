@@ -152,6 +152,7 @@ PROMPTS = {
 - 如果上方提供了 apexlol.info 的海克斯联动数据，你**必须优先使用**该数据中的符文搭配来推荐
 - **不要编造不存在的符文名！** 只推荐数据中出现过的符文
 - 按 SS > S > A > B 级别优先推荐
+- **兜底规则 (极为重要)**: 如果你能搜集到的海克斯符文数量不足以填满以下要求的 3 套方案（共12个槽位），你可以跨方案重复推荐同一个海克斯，或者在填不出的空位填写“【视对局刷新而定】”。**哪怕留空，也绝对不允许写出任何一个普通的常规英雄联盟符文！**
 
 重要背景：这是"海克斯大乱斗"模式，不是传统 ARAM！
 海克斯强化符文系统：
@@ -252,6 +253,8 @@ PROMPTS = {
 - If apexlol.info data is provided above, you **MUST prioritize** those augment combos for recommendations
 - **Do NOT invent augment names!** Only recommend augments that appear in the data
 - Prioritize by rating: SS > S > A > B
+- **NO STANDARD RUNES**: Crucial! Never recommend Electrocute, Dark Harvest, Conqueror, etc.
+- **Fallback Rule (CRITICALLY IMPORTANT)**: If you do not have enough Hextech Augment names to fill the 3 builds (12 slots total), you may re-use the same augment names across different builds, or write "[Depends on game RNG]". **Under NO circumstances are you allowed to fill the gaps with standard League of Legends runes!**
 
 Important: This is "Hextech Havoc" mode, NOT traditional ARAM!
 Hextech Augment system:
@@ -446,6 +449,7 @@ QUICK_GUIDE_PROMPTS = {
 - **高分优先**: 优先提取并推荐参考资料中评分为 SS、S 或 A 的符文组合方案。
 - **严禁编造**: 如果系统在最上方提供了真实的高分数据字典（apexlol_context），你**绝对必须**从这些数据里挑选真实存在的海克斯名字！
 - **禁用普通符文**: 严禁用电刑、黑暗收割、征服者、强攻、彗星、艾黎、生命源泉等任何普通符文。必须只推荐海克斯符文库中的项目！
+- **兜底规则 (极为重要)**: 如果你能搜集到的海克斯符文数量不足以填满以下要求的 3 套方案，你可以跨方案重复推荐，或者在填不出的空位填写“【视对局刷新而定】”。**哪怕留空，也绝对不允许写出任何一个普通的常规英雄联盟符文！**
 
 ### 🎲 海克斯符文前瞻（3套方案，每套必填4个符文名）
 
@@ -487,7 +491,9 @@ This is a [Quick Preview Guide], the player has locked in champion: [{champion_n
 Since enemy teams are unknown, provide the 3-tier hextech augment builds and core 6 item builds for this champion generally.
 
 ⛔ Hextech Rules:
-- If apexlol_context data is provided above, you MUST prioritize those exact augment names. Do NOT invent augments.
+- **Do NOT invent augment names!** Only recommend augments that appear in the data.
+- **NO STANDARD RUNES**: Crucial! Never recommend Electrocute, Dark Harvest, Conqueror, Comet, etc. You must only use Hextech Augments.
+- **Fallback Rule (CRITICALLY IMPORTANT)**: If you do not have enough Hextech Augment names from the context to fill the 3 builds (12 slots total), you may re-use the same augment names across different builds, or write "[Depends on game RNG]". **Under NO circumstances are you allowed to fill the gaps with standard League of Legends runes!**
 
 Output Format:
 
@@ -533,11 +539,11 @@ LCU_FULL_STRATEGY_PROMPTS = {
 1. **名称绝对对齐**: 对于输出的符文名，必须与上方提供的【标准海克斯名单】中的文字**字符级匹配**，严禁任何润色、扩充或删减！请直接搬运字典中的原词。
 2. **优先使用高分数据**: 优先从提供的 apexlol_context 高分记录表中挑选。
 3. **严禁普通符文干扰**: 严禁提及【黑暗收割、征服者、电刑、强攻、法球、生命源泉】等普通符文。只需分析海克斯强化！
-4. **三套方案要求**: 必须提供 3 套**完全不同**流派的海克斯组合，每套包含完整的 Lv3、Lv7、Lv11、Lv15 共 4 个符文。
+4. **兜底规则 (极为重要)**: 如果你掌握的海克斯知识或者上下文数据不足以填满 3 套方案（12个槽位），你可以跨方案重复使用同一个海克斯名字，或者直接填写“【视对局刷新而定】”。**哪怕留空，也绝对不允许写出任何一个普通的常规英雄联盟符文！**
 
 ## 🚀 LCU 自动追踪分析：玩转 {my_champion}
 
-### 🎲 海克斯符文选择指南（3套流派，每套4个符文）
+### 🎲 海克斯符文选择指南（3套流派，尽量填满，缺损可用“视刷新而定”）
 
 #### 🥇 【流派标签】最佳适配方案
 1. 【Lv3】**符文名** — 简述作用机制/联动
@@ -588,7 +594,8 @@ Rosters and my champion state:
 
 ⛔ Hextech Rules:
 1. **Use Ranked Data**: If apexlol_context is provided, you MUST pick existing high-winrate augments from it.
-2. **Three Build Paths**: Give 3 distinct hextech paths (e.g. Assassin, Bruiser, Mage), each with 4 augments (Lv3/7/11/15). Use real augment names!
+2. **NO STANDARD RUNES**: Never use standard runes like Conqueror, Electrocute, Dark Harvest, Comet, Press the Attack, etc.
+3. **Fallback Rule**: If you lack enough Hextech Augment names to fill the 3 paths (12 slots), you may reuse names across paths or write "[Depends on RNG]". **Never fill empty slots with standard LoL runes!**
 
 Format output:
 
