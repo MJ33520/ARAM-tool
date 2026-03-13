@@ -269,10 +269,19 @@ def analyze_lcu_rosters(rosters: dict, hextech_history: list[str] = None) -> str
         my_champion = rosters.get("my_champion", "未知英雄")
         lcu_rosters = rosters.get("live_context", "")
         
+        # ====== 数据驱动：直接从 ApexLol 硬抽该英雄的核心符文方案 ======
+        prefilled_augments = ""
+        if APEXLOL_ENABLED:
+            from apexlol_data import extract_top_synergies
+            prefilled_augments = extract_top_synergies(my_champion)
+            if prefilled_augments:
+                log.info(f"[ApexLol] LCU分析已附加 {my_champion} 的海克斯数据 ({len(prefilled_augments)} 字符)")
+                
         log.info(f"[Gemini] 纯数据级全局分析 ({my_champion})...")
         prompt = LCU_FULL_STRATEGY_PROMPTS.get(LANGUAGE, LCU_FULL_STRATEGY_PROMPTS["zh"]).format(
             my_champion=my_champion,
-            lcu_rosters=lcu_rosters
+            lcu_rosters=lcu_rosters,
+            prefilled_augments=prefilled_augments if prefilled_augments else "（暂无数据）"
         )
         
         # 注入海克斯历史
@@ -300,7 +309,14 @@ def analyze_lcu_rosters(rosters: dict, hextech_history: list[str] = None) -> str
             label="纯文本全量分析",
         )
         log.info(f"[Gemini] 纯数据全量分析完成 ({time.time()-t_start:.1f}s)")
-        return response.text
+        
+        # 与极速前瞻一样，强制将 Apexlol 数据拼在最前面
+        final_output = ""
+        if prefilled_augments:
+            final_output += prefilled_augments + "\n\n---\n\n"
+        final_output += response.text
+        
+        return final_output
 
     except Exception as e:
         error_msg = f"❌ LCU 全量分析失败: {str(e)}"

@@ -65,19 +65,6 @@ class App:
         btn_frame = tk.Frame(self.root, bg="#1a1a2e")
         btn_frame.pack(fill=tk.X)
 
-        # ⚔️ 全局分析
-        self.btn_analyze = tk.Button(
-            btn_frame, text=T("btn_analyze"), command=self._on_analyze,
-            bg="#1a1a2e", fg="#ffd700", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
-            padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        self.btn_analyze.pack(side=tk.LEFT, padx=(2, 1))
-
-        sep1 = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
-                        font=("Microsoft YaHei UI", 11))
-        sep1.pack(side=tk.LEFT)
-
         # ⚡ 海克斯
         self.btn_hextech = tk.Button(
             btn_frame, text=T("btn_hextech"), command=self._on_hextech,
@@ -100,18 +87,7 @@ class App:
         )
         self.btn_show.pack(side=tk.LEFT, padx=(1, 1))
 
-        # ✏️ 纠错 (Fix)
-        self.btn_fix = tk.Button(
-            btn_frame, text=T("btn_fix"), command=self._on_fix,
-            bg="#1a1a2e", fg="#ffaa00", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
-            padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        self.btn_fix.pack(side=tk.LEFT, padx=(1, 1))
 
-        sep_fix = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
-                        font=("Microsoft YaHei UI", 11))
-        sep_fix.pack(side=tk.LEFT)
 
         # 🔄 抢英雄 (Auto-Grab)
         self.btn_grab = tk.Button(
@@ -147,8 +123,8 @@ class App:
 
         # 拖拽
         self._drag_data = {"x": 0, "y": 0}
-        drag_widgets = [self.btn_analyze, self.btn_hextech, self.btn_show, self.btn_fix, self.btn_grab,
-                        sep1, sep2, sep_fix, self.status_label, btn_frame]
+        drag_widgets = [self.btn_hextech, self.btn_show, self.btn_grab,
+                        sep2, self.status_label, btn_frame]
         if APEXLOL_ENABLED:
             drag_widgets.extend([sep3, self.btn_data])
         for w in drag_widgets:
@@ -220,7 +196,6 @@ class App:
             return
         
         _is_analyzing = True
-        self.btn_analyze.configure(text=T("btn_analyzing"), state=tk.DISABLED)
         self.status_label.configure(text="全自动 LCU 数据分析中...")
         
         # 弹窗提示
@@ -246,7 +221,7 @@ class App:
                 self.root.after(0, lambda: self._show_global_result(f"❌ LCU 分析出错:\n{e}"))
             finally:
                 _is_analyzing = False
-                self.root.after(0, self._restore_analyze_btn)
+                self.root.after(0, self._restore_ui_state)
                 
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
@@ -294,7 +269,6 @@ class App:
             return
         
         _is_analyzing = True
-        self.btn_analyze.configure(text=T("btn_analyzing"), state=tk.DISABLED)
         self.status_label.configure(text=T("status_analyzing"))
         
         # 弹窗显示前瞻正在进行
@@ -322,92 +296,15 @@ class App:
                 self.root.after(0, lambda: self._show_global_result(f"❌ 分析出错:\n{e}"))
             finally:
                 _is_analyzing = False
-                self.root.after(0, self._restore_analyze_btn)
+                self.root.after(0, self._restore_ui_state)
                 
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
 
 
-    # ==================== 全局分析 ====================
-    def _on_analyze(self, manual_champion: str = None):
-        global _is_analyzing
-        if _is_analyzing:
-            return
-            
-        # 1. 检查当前游戏阶段 (v1.7.0 分流逻辑)
-        from lcu_client import get_gameflow_phase
-        current_phase = get_gameflow_phase()
-        log.info(f"[UI] 分析按钮触发，当前阶段: {current_phase}")
-        
-        # 如果是 ChampSelect 或之前，或者虽然是 InProgress 但用户之前手动锁定了英雄且我们只想看英雄建议
-        # 核心逻辑：加载阶段（GameStart/LoadingScreen）不应截图，因为 LCU 暗中处理了
-        # 我们这里只在 InProgress 阶段保留截图分析逻辑
-        if current_phase not in ["InProgress"]:
-            # 非对局中：执行“极速前瞻”逻辑 (文字分析)
-            # 优先使用锁定的英雄，或者 LCU 当前选中的英雄
-            target = manual_champion or self._locked_champion
-            if not target:
-                from lcu_client import get_champ_select_info
-                info = get_champ_select_info()
-                if info and info.get("my_champion"):
-                    target = info["my_champion"]
-            
-            if target:
-                log.info(f"[UI] 非对局中阶段，执行极速前瞻: {target}")
-                self._run_quick_guide(target)
-                return
-            else:
-                self.status_label.configure(text="❌ 未检测到英雄，请先锁定英雄或输入英雄名。")
-                return
 
-        # 2. 如果是 InProgress 阶段，则执行“截图全量分析” (Tab 战绩表分析)
-        _is_analyzing = True
-        self.btn_analyze.configure(text=T("btn_analyzing"), state=tk.DISABLED)
-        self.status_label.configure(text=T("status_analyzing"))
-        self.root.update()
 
-        # 隐藏按钮和攻略，避免截图中出现
-        self.root.withdraw()
-        if self.overlay:
-            self.overlay.withdraw()
-            self._overlay_visible = False
-        if self.hextech_overlay:
-            self.hextech_overlay.withdraw()
-            self._hextech_visible = False
-        self.root.update()
-        _time.sleep(0.15)
 
-        # 后台线程执行分析
-        thread = threading.Thread(target=self._run_analysis, args=(manual_champion,), daemon=True)
-        thread.start()
-
-    def _on_fix(self):
-        """手动纠错：弹窗询问英雄名，并重新强制分析"""
-        global _is_analyzing
-        if _is_analyzing:
-            return
-            
-        import tkinter.simpledialog as sd
-        # 弹窗时需要将主窗口抬高，否则对话框可能被遮挡
-        self.root.lift()
-        self.root.attributes("-topmost", True)
-        
-        name = sd.askstring(
-            T("fix_prompt_title"),
-            T("fix_prompt_msg"),
-            parent=self.root
-        )
-        
-        if name and name.strip():
-            cmd = name.strip()
-            log.info(f"用户手动请求锁定/纠错英雄，英雄名: {cmd}")
-            # 更新锁定英雄并在主线程中重新触发全局分析（点击分析按钮，走截图全量分析流程）
-            self._locked_champion = cmd
-            self._on_analyze()
-        else:
-            if name is not None: # 不为None说明点了确定但没输入
-                from tkinter import messagebox
-                messagebox.showwarning("⚠️", T("fix_error"), parent=self.root)
 
     def _on_toggle_grab(self):
         """切换后台自动抢替补席状态"""

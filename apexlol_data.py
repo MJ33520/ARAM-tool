@@ -268,34 +268,38 @@ def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
     # 按评分排序（S级 > A级 > B级）
     sorted_syns = sorted(synergies, key=lambda s: _parse_rating_key(s.get("rating", "")))
     
-    # 取前 top_n 组
-    top_syns = sorted_syns[:top_n]
+    # 提取所有 S 级以上的方案 (SSS, SS, S)
+    top_syns = [s for s in sorted_syns if _parse_rating_key(s.get("rating", "")) <= 2]
     
+    # 如果该英雄恰好没有 S 级方案，则兜底返回前 3 套
+    if not top_syns:
+        top_syns = sorted_syns[:3]
+        
     if not top_syns:
         return ""
     
-    tier_labels = ["🥇 最佳方案", "🥈 次选方案", "🥉 备选方案"]
     lines = [
         f"### 🎲 海克斯符文推荐：{cn_title}（数据来源: apexlol.info，按胜率排序）",
         ""
     ]
     
     for i, syn in enumerate(top_syns):
-        label = tier_labels[i] if i < len(tier_labels) else f"方案{i+1}"
         hex_names = [_fix_mojibake(h) for h in syn.get("hex_names", [])]
-        rating = _fix_mojibake(syn.get("rating", ""))
+        rating = _fix_mojibake(syn.get("rating", "")).upper()
+        if not rating: rating = "未知"
         tiers = " / ".join([_fix_mojibake(t) for t in syn.get("hex_tiers", [])])
         tag = _fix_mojibake(syn.get("tag", ""))
         analysis = _fix_mojibake(syn.get("analysis", ""))
         
         hex_display = " + ".join(hex_names) if hex_names else "未知"
         
-        lines.append(f"#### {label} [{rating}] {f'({tiers})' if tiers else ''}")
-        lines.append(f"- **核心符文组合**: {hex_display}")
+        # 使用等级作为头衔，例如 【SSS 级推荐】
+        lines.append(f"#### 🏆 【{rating} 级方案】 {f'({tiers})' if tiers else ''}")
+        lines.append(f"- **核心组合**: {hex_display}")
         if tag:
             lines.append(f"- **流派标签**: {tag}")
         if analysis:
-            lines.append(f"- **联动机制**: {analysis}")
+            lines.append(f"- **机制解析**: {analysis}")
         lines.append("")
     
     return "\n".join(lines)
