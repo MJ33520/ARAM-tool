@@ -187,24 +187,27 @@ class App:
         t_lcu.start()
 
     def _lcu_live_monitor(self):
-        """后台轮询 LCU Live API，一旦获取到 10 人阵容即自动触发分析。"""
+        """后台轮询 LCU API，在加载界面即自动触发分析。"""
         global _is_analyzing, _is_hextech_analyzing
         _match_analyzed_flag = False
-        from lcu_client import get_live_team_rosters
+        from lcu_client import get_loading_screen_rosters, get_gameflow_phase
         import time
         
         while True:
             try:
-                rosters = get_live_team_rosters()
-                if rosters and not _match_analyzed_flag:
-                    # 获取到了完整的阵容，且还没分析过
-                    if not _is_analyzing and not _is_hextech_analyzing:
-                        log.info("🚀 发现新对局！LCU 自动捕获阵容，正在无感生成攻略...")
-                        _match_analyzed_flag = True
-                        # 在主线程中触发纯文本全量分析
-                        self.root.after(0, lambda r=rosters: self._run_lcu_auto_analysis(r))
-                elif not rosters:
-                    # 如果拿不到数据（游戏未开始或结束），重置标记
+                phase = get_gameflow_phase()
+                
+                # 在加载界面 (InProgress) 进行秒级前瞻分析
+                if phase == "InProgress":
+                    if not _match_analyzed_flag and not _is_analyzing and not _is_hextech_analyzing:
+                        rosters = get_loading_screen_rosters()
+                        if rosters:
+                            log.info("🚀 发现新对局加载中！LCU 自动捕获 10 人阵容，正在无感生成攻略...")
+                            _match_analyzed_flag = True
+                            # 在主线程中触发纯文本全量分析
+                            self.root.after(0, lambda r=rosters: self._run_lcu_auto_analysis(r))
+                else:
+                    # 如果不是在游戏中，则重置标记，准备迎接下一局
                     _match_analyzed_flag = False
             except Exception as e:
                 pass

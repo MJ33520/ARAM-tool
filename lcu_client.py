@@ -442,6 +442,73 @@ def get_live_team_rosters() -> dict | None:
         "live_context": "\n".join(context)
     }
 
+def get_loading_screen_rosters() -> dict | None:
+    """
+    通过 LCU 的 GameFlow 接口在加载界面（非游戏内）提前获取 10 人阵容。
+    这是恢复极速自动分析的关键，不依赖于延迟启动的 2999 端口 API。
+    """
+    conn = _get_connection()
+    if not conn:
+        return None
+    port, token = conn
+    
+    session = _lcu_request(port, token, "/lol-gameflow/v1/session")
+    if not session:
+        return None
+        
+    game_data = session.get("gameData", {})
+    team_one = game_data.get("teamOne", [])
+    team_two = game_data.get("teamTwo", [])
+    
+    if not team_one and not team_two:
+        return None
+        
+    _load_champion_names()
+    
+    # 查找本地玩家 (通过 LCU 获取本地召唤师信息)
+    local_summoner = _lcu_request(port, token, "/lol-summoner/v1/current-summoner")
+    local_name = local_summoner.get("displayName", "") if local_summoner else ""
+    local_puuid = local_summoner.get("puuid", "") if local_summoner else ""
+    
+    my_team_players = []
+    their_team_players = []
+    my_champion = "未知英雄"
+    
+    # 判断我们在哪个队伍
+    my_team_is_one = False
+    for p in team_one:
+        if p.get("summonerName") == local_name or p.get("puuid") == local_puuid:
+            my_team_is_one = True
+            break
+            
+    my_team_data = team_one if my_team_is_one else team_two
+    their_team_data = team_two if my_team_is_one else team_one
+    
+    for p in my_team_data:
+        champ_id = p.get("championId", 0)
+        cname = get_champion_name(champ_id)
+        my_team_players.append(cname)
+        if p.get("summonerName") == local_name or p.get("puuid") == local_puuid:
+            my_champion = cname
+            
+    for p in their_team_data:
+        cname = get_champion_name(p.get("championId", 0))
+        their_team_players.append(cname)
+        
+    context = [
+        f"⭐【我选择的英雄】: {my_champion}（请重点分析我的出装、海克斯和打法）",
+        f"【自动捕获: 我方阵容】: {', '.join(my_team_players)}",
+        f"【自动捕获: 敌方阵容】: {', '.join(their_team_players)}",
+        "（以上阵容已由客户端在加载界面瞬间捕获。敌方阵容无视野区已点亮，请直接以该名单进行终极推演）"
+    ]
+    
+    return {
+        "my_team": my_team_players,
+        "their_team": their_team_players,
+        "my_champion": my_champion,
+        "live_context": "\n".join(context)
+    }
+
 def get_full_board_state() -> str | None:
     """
     获取全局 10 名玩家的完整状态（英雄、装备、已选海克斯）。
