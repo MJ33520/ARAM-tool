@@ -219,6 +219,78 @@ def lookup_champions(names: list[str], highlight_mine: str = None) -> str:
     return header + "\n\n" + "\n\n".join(sections)
 
 
+# ==================== 评分排序权重 ====================
+_RATING_ORDER = {"sss": 0, "ss": 1, "s": 2, "a": 3, "b": 4, "c": 5}
+
+def _parse_rating_key(rating_str: str) -> int:
+    """将 'S 级'、'SS 级' 等字符串解析为排序权重（越小越强）。"""
+    if not rating_str:
+        return 99
+    cleaned = rating_str.strip().upper().replace("级", "").replace(" ", "")
+    for key, val in _RATING_ORDER.items():
+        if cleaned.startswith(key.upper()):
+            return val
+    return 99
+
+
+def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
+    """
+    从 ApexLol 缓存中按评分排序，直接提取该英雄的前 N 组海克斯联动方案。
+    返回格式化的 Markdown 字符串，可直接作为"预填答案"嵌入 prompt。
+    
+    这是"数据驱动"的核心函数：符文方案不靠 AI 猜，而是从真实数据中硬抽。
+    """
+    global _cache
+    if not _cache:
+        return ""
+    
+    champ_id = resolve_champion_id(champion_name)
+    if not champ_id:
+        return ""
+    
+    champ_data = _cache.get("champions", {}).get(champ_id)
+    if not champ_data or not champ_data.get("synergies"):
+        return ""
+    
+    cn_title = champ_data.get("cn_title", champ_id)
+    synergies = champ_data["synergies"]
+    
+    # 按评分排序（S级 > A级 > B级）
+    sorted_syns = sorted(synergies, key=lambda s: _parse_rating_key(s.get("rating", "")))
+    
+    # 取前 top_n 组
+    top_syns = sorted_syns[:top_n]
+    
+    if not top_syns:
+        return ""
+    
+    tier_labels = ["🥇 最佳方案", "🥈 次选方案", "🥉 备选方案"]
+    lines = [
+        f"### 🎲 海克斯符文推荐：{cn_title}（数据来源: apexlol.info，按胜率排序）",
+        ""
+    ]
+    
+    for i, syn in enumerate(top_syns):
+        label = tier_labels[i] if i < len(tier_labels) else f"方案{i+1}"
+        hex_names = syn.get("hex_names", [])
+        rating = syn.get("rating", "")
+        tiers = " / ".join(syn.get("hex_tiers", []))
+        tag = syn.get("tag", "")
+        analysis = syn.get("analysis", "")
+        
+        hex_display = " + ".join(hex_names) if hex_names else "未知"
+        
+        lines.append(f"#### {label} [{rating}] {f'({tiers})' if tiers else ''}")
+        lines.append(f"- **核心符文组合**: {hex_display}")
+        if tag:
+            lines.append(f"- **流派标签**: {tag}")
+        if analysis:
+            lines.append(f"- **联动机制**: {analysis}")
+        lines.append("")
+    
+    return "\n".join(lines)
+
+
 def get_cache_info(cache_dir: str) -> dict:
     """获取缓存状态信息。"""
     cache_file = os.path.join(cache_dir, "apexlol_data.json")

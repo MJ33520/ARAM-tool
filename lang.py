@@ -435,45 +435,18 @@ Keep it concise, same format as the original strategy.
 # ==================== 极速前瞻攻略 Prompt ====================
 QUICK_GUIDE_PROMPTS = {
     "zh": """你是一位英雄联盟 **海克斯大乱斗** 模式的资深玩家和分析师。
-这是一份【极速前瞻攻略】，玩家在选就绪或进入游戏前提前指定了英雄名：【{champion_name}】。
-由于目前不知道具体的 5v5 阵容，你需要只针对该英雄本身，提供 3 套海克斯搭配和核心出装推荐。
+玩家指定了英雄：【{champion_name}】。
 
 ## 🚀 极速前瞻：{champion_name}
-（注：完整 5v5 分析请在加载界面点击“全局分析”）
 
-⛔ 核心强制规则：
-- **名称绝对对齐**: 对于下方输出的任何海克斯符文名，必须与上方【标准海克斯名单】中的文字**逐字对应**，严禁增减、修改或润色任何字符！
-- **禁用修饰**: 严禁在符文名前后添加描述性文字。
-- **高分优先**: 优先提取并推荐参考资料中评分为 SS、S 或 A 的符文组合方案。
-- **严禁编造**: 如果系统在最上方提供了真实的高分数据字典（apexlol_context），你**绝对必须**从这些数据里挑选真实存在的海克斯名字！
-- **禁用普通符文**: 严禁用电刑、黑暗收割、征服者、强攻、彗星、艾黎、生命源泉等任何普通符文。必须只推荐海克斯符文库中的项目！
-- **兜底规则 (极为重要)**: 如果你能搜集到的海克斯符文数量不足以填满以下要求的 3 套方案，你可以跨方案重复推荐，或者在填不出的空位填写“【视对局刷新而定】”。**哪怕留空，也绝对不允许写出任何一个普通的常规英雄联盟符文！**
+以下海克斯符文方案已由数据系统从 apexlol.info 高胜率数据库中直接提取，**你不需要修改这些符文方案，直接原样输出即可**：
 
-### 🎲 海克斯符文前瞻（3套方案，每套必填4个符文名）
+{prefilled_augments}
 
-#### 🥇 最佳方案
-1. 【Lv3】**符文名** — 简述作用机制/联动
-2. 【Lv7】**符文名** — 简述
-3. 【Lv11】**符文名** — 简述
-4. 【Lv15】**符文名** — 简述
-- 💎 套装加成或总结
-
-#### 🥈 次选方案
-1. 【Lv3】**符文名** — 简述
-2. 【Lv7】**符文名** — 简述
-3. 【Lv11】**符文名** — 简述
-4. 【Lv15】**符文名** — 简述
-- 📌 方案特点总结
-
-#### 🥉 备选方案
-1. 【Lv3】**符文名** — 简述
-2. 【Lv7】**符文名** — 简述
-3. 【Lv11】**符文名** — 简述
-4. 【Lv15】**符文名** — 简述
-- 📌 方案特点总结
+你只需要补充以下内容：
 
 ### 🛡️ 核心出装推荐（6件必填）
-要求严格符合该英雄主流定位和伤害类型。
+要求严格符合该英雄主流定位和伤害类型（AD英雄出AD装，AP英雄出AP装，坦克出肉装）。
 1. **装备完整名** — 出装理由
 2. **装备完整名** — 出装理由
 ...
@@ -485,37 +458,21 @@ QUICK_GUIDE_PROMPTS = {
 ### 💡 核心玩法一句话总结
 """,
     "en": """You are a League of Legends Hextech Havoc expert.
-This is a [Quick Preview Guide], the player has locked in champion: [{champion_name}].
-Since enemy teams are unknown, provide the 3-tier hextech augment builds and core 6 item builds for this champion generally.
-
-⛔ Hextech Rules:
-- **Do NOT invent augment names!** Only recommend augments that appear in the data.
-- **NO STANDARD RUNES**: Crucial! Never recommend Electrocute, Dark Harvest, Conqueror, Comet, etc. You must only use Hextech Augments.
-- **Fallback Rule (CRITICALLY IMPORTANT)**: If you do not have enough Hextech Augment names from the context to fill the 3 builds (12 slots total), you may re-use the same augment names across different builds, or write "[Depends on game RNG]". **Under NO circumstances are you allowed to fill the gaps with standard League of Legends runes!**
-
-Output Format:
+Champion: [{champion_name}].
 
 ## 🚀 Quick Preview: {champion_name}
 
-### 🎲 Hextech Augments (3 builds x 4 augments)
+The following hextech augment builds have been extracted directly from the apexlol.info high-winrate database. **Output them as-is, do NOT modify these augment builds**:
 
-#### 🥇 Best Build
-1. 【Lv3】**Augment Name** — synergy
-2. 【Lv7】**Augment Name** — synergy
-3. 【Lv11】**Augment Name** — synergy
-4. 【Lv15】**Augment Name** — synergy
+{prefilled_augments}
 
-#### 🥈 Second Build
-(Same format)
-
-#### 🥉 Third Build
-(Same format)
+You only need to provide these additional sections:
 
 ### 🛡️ Core Build (6 items)
-Give 6 core items with brief reasons.
+Give 6 core items with brief reasons matching the champion's role.
 
 ### ✨ Summoner Spells
-Recommend 2 optimal summoner spells (e.g., Flash + Mark/Ghost/Exhaust) for ARAM and briefly explain why.
+Recommend 2 optimal summoner spells for ARAM and briefly explain why.
 
 ### 💡 Playstyle Summary
 (One sentence summary)

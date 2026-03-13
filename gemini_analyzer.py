@@ -217,29 +217,31 @@ def analyze_screenshot(png_bytes: bytes, manual_champion: str = None,
 
 
 def analyze_champion_quick_guide(champion_name: str) -> str:
-    """开局前极速前瞻分析：终端输英雄名 → 三套海克斯+出装（纯文本，无需截图）。"""
+    """开局前极速前瞻分析：终端输英雄名 → 数据驱动的海克斯+AI出装（纯文本，无需截图）。"""
     try:
         from lang import QUICK_GUIDE_PROMPTS
         log.info(f"[Gemini] 极速前瞻分析 ({champion_name})...")
-        prompt = QUICK_GUIDE_PROMPTS.get(LANGUAGE, QUICK_GUIDE_PROMPTS["zh"]).format(
-            champion_name=champion_name
-        )
         
-        # 极速定向数据注入（仅注入这一个英雄，不到 1KB）
+        # ====== 数据驱动：直接从 ApexLol 硬抽符文方案 ======
+        prefilled_augments = ""
         if APEXLOL_ENABLED:
-            apexlol_context = _build_apexlol_context({"my_champion": champion_name})
-            if apexlol_context:
-                prompt = apexlol_context + "\n\n" + "=" * 60 + "\n\n" + prompt
-                log.info(f"[ApexLol] 注入单英雄定向高分数据: {len(apexlol_context)} 字符")
+            from apexlol_data import extract_top_synergies
+            prefilled_augments = extract_top_synergies(champion_name)
+            if prefilled_augments:
+                log.info(f"[ApexLol] 已从数据库直接提取符文方案 ({len(prefilled_augments)} 字符)")
+        
+        prompt = QUICK_GUIDE_PROMPTS.get(LANGUAGE, QUICK_GUIDE_PROMPTS["zh"]).format(
+            champion_name=champion_name,
+            prefilled_augments=prefilled_augments if prefilled_augments else "（无数据，请根据英雄特性自行推荐3套海克斯符文方案）"
+        )
 
         import time
         t_start = time.time()
-        # 纯文本请求，不需要传 png_bytes
         response = _call_with_retry(
             model=GEMINI_MODEL,
             contents=[prompt],
             config=types.GenerateContentConfig(
-                temperature=0.3, # 降低随机性，更稳定地提取高分数据
+                temperature=0.3,
             ),
             label="极速前瞻",
         )
@@ -315,14 +317,8 @@ def analyze_hextech_choice(png_bytes: bytes, global_context: str,
             hextech_history=history_str,
         )
         
-        # =============== 海克斯专属上下文增强 ===============
-        # 移除 full_board_state 以恢复极速体验
-        # 注入极限压缩版 apex 数据，利用该压缩包强制约束 Flash Lite 不乱编海克斯
-        if APEXLOL_ENABLED:
-            apexlol_context = _build_all_champions_context()
-            if apexlol_context:
-                prompt = apexlol_context + "\n\n" + prompt
-                log.info(f"[Gemini] 已注入极限压缩的高分数据至海克斯推演: {len(apexlol_context)} 字符")
+        # 极速模式：不注入任何额外上下文，只靠截图+全局摘要+历史
+        # 这样 Prompt 体积 ~2KB，确保 TTFT 最低，5秒内出结果
         
         response = _call_with_retry(
             model=GEMINI_MODEL,
