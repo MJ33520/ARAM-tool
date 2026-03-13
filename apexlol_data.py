@@ -271,9 +271,9 @@ def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
     # 提取所有 S 级以上的方案 (SSS, SS, S)
     top_syns = [s for s in sorted_syns if _parse_rating_key(s.get("rating", "")) <= 2]
     
-    # 如果该英雄恰好没有 S 级方案，则兜底返回前 3 套
-    if not top_syns:
-        top_syns = sorted_syns[:3]
+    # 如果 S 级方案不够 4 个，则按评分向下顺延（取 A、B、C 等），凑够 4 个
+    if len(top_syns) < 4:
+        top_syns = sorted_syns[:4]
         
     if not top_syns:
         return ""
