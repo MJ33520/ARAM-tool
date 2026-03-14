@@ -87,7 +87,18 @@ class App:
         )
         self.btn_show.pack(side=tk.LEFT, padx=(1, 1))
 
+        # ✏️ 手动指定/纠错 (Fix)
+        self.btn_fix = tk.Button(
+            btn_frame, text=T("btn_fix"), command=self._on_fix,
+            bg="#1a1a2e", fg="#ffaa00", activebackground="#2a2a4e",
+            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
+            padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+        )
+        self.btn_fix.pack(side=tk.LEFT, padx=(1, 1))
 
+        sep_fix = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
+                        font=("Microsoft YaHei UI", 11))
+        sep_fix.pack(side=tk.LEFT)
 
         # 🔄 抢英雄 (Auto-Grab)
         self.btn_grab = tk.Button(
@@ -123,8 +134,8 @@ class App:
 
         # 拖拽
         self._drag_data = {"x": 0, "y": 0}
-        drag_widgets = [self.btn_hextech, self.btn_show, self.btn_grab,
-                        sep2, self.status_label, btn_frame]
+        drag_widgets = [self.btn_hextech, self.btn_show, self.btn_fix, self.btn_grab,
+                        sep2, sep_fix, self.status_label, btn_frame]
         if APEXLOL_ENABLED:
             drag_widgets.extend([sep3, self.btn_data])
         for w in drag_widgets:
@@ -301,10 +312,32 @@ class App:
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
 
-
-
-
-
+    def _on_fix(self):
+        """手动纠错/指定：弹窗询问英雄名，并触发极速前瞻分析"""
+        global _is_analyzing
+        if _is_analyzing:
+            return
+            
+        import tkinter.simpledialog as sd
+        # 弹窗时需要将主窗口抬高，否则对话框可能被遮挡
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        
+        name = sd.askstring(
+            T("fix_prompt_title"),
+            T("fix_prompt_msg"),
+            parent=self.root
+        )
+        
+        if name and name.strip():
+            cmd = name.strip()
+            log.info(f"用户手动请求指定英雄，英雄名: {cmd}")
+            self._locked_champion = cmd
+            self._run_quick_guide(cmd)
+        else:
+            if name is not None: # 不为None说明点了确定但没输入
+                from tkinter import messagebox
+                messagebox.showwarning("⚠️", T("fix_error"), parent=self.root)
 
     def _on_toggle_grab(self):
         """切换后台自动抢替补席状态"""
