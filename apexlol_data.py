@@ -265,17 +265,11 @@ def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
     cn_title = _fix_mojibake(champ_data.get("cn_title", champ_id))
     synergies = champ_data["synergies"]
     
-    # 按评分排序（S级 > A级 > B级）
+    # 按评级从高到低排序（SSS > SS > S > A > B > C > D）
     sorted_syns = sorted(synergies, key=lambda s: _parse_rating_key(s.get("rating", "")))
     
-    # 提取所有 S 级以上的方案 (SSS, SS, S)
-    top_syns = [s for s in sorted_syns if _parse_rating_key(s.get("rating", "")) <= 2]
-    
-    # 如果 S 级方案不够 4 个，则按评分向下顺延（取 A、B、C 等），凑够 4 个
-    if len(top_syns) < 4:
-        top_syns = sorted_syns[:4]
-        
-    if not top_syns:
+    # 直接展示全部方案，按评级高低依次排列，有几个放几个
+    if not sorted_syns:
         return ""
     
     lines = [
@@ -283,7 +277,7 @@ def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
         ""
     ]
     
-    for i, syn in enumerate(top_syns):
+    for i, syn in enumerate(sorted_syns):
         hex_names = [_fix_mojibake(h) for h in syn.get("hex_names", [])]
         rating = _fix_mojibake(syn.get("rating", "")).upper()
         if not rating: rating = "未知"
