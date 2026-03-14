@@ -12,20 +12,121 @@ import logging
 log = logging.getLogger("ARAM")
 
 # ==================== 英雄名称映射 ====================
-# 中文标题 -> 英文 ID（爬取时自动构建，这里是常用别名的手动补充）
+# 完整的中文名/别名 -> 英文 ID 映射（防止 mojibake 导致名称匹配失败）
 CHAMPION_ALIASES = {
-    # 常用简称 -> ID
-    "卡特": "Katarina", "火男": "Brand", "剑圣": "MasterYi",
-    "大嘴": "KogMaw", "小法": "Veigar", "女枪": "MissFortune",
-    "老鼠": "Twitch", "锤石": "Thresh", "狗头": "Nasus",
-    "牛头": "Alistar", "猴子": "MonkeyKing", "蛮王": "Tryndamere",
-    "石头人": "Malphite", "机器人": "Blitzcrank", "稻草人": "Fiddlesticks",
+    # ===== A =====
+    "阿卡丽": "Akali", "阿克尚": "Akshan", "阿利斯塔": "Alistar", "阿木木": "Amumu",
+    "阿尼维亚": "Anivia", "安妮": "Annie", "阿菲利奥斯": "Aphelios", "艾瑞莉娅": "Irelia",
+    "艾希": "Ashe", "奥恩": "Ornn", "奥拉夫": "Olaf", "奥瑞利安索尔": "AurelionSol",
+    "奥莉安娜": "Orianna", "阿兹尔": "Azir", "艾克": "Ekko", "安贝萨": "Ambessa",
+    # ===== B =====
+    "巴德": "Bard", "贝尔维斯": "Belveth", "布兰德": "Brand", "布隆": "Braum",
+    "布里茨": "Blitzcrank",
+    # ===== C =====
+    "才藏": "Hwei", "铸星龙王": "AurelionSol",
+    # ===== D =====
+    "大嘴": "KogMaw", "大头": "Heimerdinger", "黛安娜": "Diana", "刀妹": "Irelia",
+    "德莱厄斯": "Darius", "德莱文": "Draven", "迪亚娜": "Diana",
+    # ===== E =====
+    "厄加特": "Urgot", "厄斐琉斯": "Aphelios", "俄洛伊": "Illaoi",
+    "恕瑞玛皇帝": "Azir",
+    # ===== F =====
+    "菲奥娜": "Fiora", "菲兹": "Fizz", "弗拉基米尔": "Vladimir", "弗雷尔卓德之心": "Braum",
+    "费德提克": "Fiddlesticks",
+    # ===== G =====
+    "盖伦": "Garen", "甘普朗克": "Gangplank", "格雷福斯": "Graves", "格温": "Gwen",
+    "古拉加斯": "Gragas", "光辉女郎": "Lux",
+    # ===== H =====
+    "海克斯科技枪": None, "赫卡里姆": "Hecarim", "黑默丁格": "Heimerdinger",
+    "厚嘴": "KogMaw",
+    # ===== I/J =====
+    "吉格斯": "Ziggs", "基兰": "Zilean", "贾克斯": "Jax", "嘉文四世": "JarvanIV",
+    "锦鲤": "Nami", "金克丝": "Jinx", "金克斯": "Jinx", "杰斯": "Jayce", "劫": "Zed",
+    "疾风剑豪": "Yasuo", "嘉文": "JarvanIV",
+    "加里奥": "Galio", "佐伊": "Zoe",
+    # ===== K =====
+    "卡尔玛": "Karma", "卡尔萨斯": "Karthus", "卡莉斯塔": "Kalista", "卡密尔": "Camille",
+    "卡萨丁": "Kassadin", "卡莎": "Kaisa", "卡兹克": "Khazix", "卡特琳娜": "Katarina",
+    "卡特": "Katarina", "卡西奥佩娅": "Cassiopeia", "卡蜜尔": "Camille",
+    "凯南": "Kennen", "凯尔": "Kayle", "凯隐": "Kayn", "凯特琳": "Caitlyn",
+    "科加斯": "Chogath", "克烈": "Kled", "奎因": "Quinn", "克格莫": "KogMaw",
+    "寇格": "KogMaw", "孔": "Wukong",
+    # ===== L =====
+    "拉克丝": "Lux", "拉莫斯": "Rammus", "兰博": "Rumble", "乐芙兰": "Leblanc",
+    "雷克塞": "RekSai", "雷克顿": "Renekton", "雷恩加尔": "Rengar", "李青": "LeeSin",
+    "莉莉娅": "Lillia", "丽桑卓": "Lissandra", "露露": "Lulu", "璐璐": "Lulu",
+    "龙女": "Shyvana", "龙王": "AurelionSol", "洛": "Rakan", "卢锡安": "Lucian",
+    "卢安": "Lucian",
+    # ===== M =====
+    "玛尔扎哈": "Malzahar", "冒险家": "Ezreal", "美杜莎": "Cassiopeia",
+    "梦魇": "Nocturne", "蒙多": "DrMundo", "蒙多医生": "DrMundo",
+    "魔腾": "Mordekaiser", "莫甘娜": "Morgana", "莫德凯撒": "Mordekaiser",
+    "墨菲特": "Malphite", "沐恩": "Milio",
+    # ===== N =====
+    "纳尔": "Gnar", "内瑟斯": "Nasus", "娜美": "Nami", "奈德丽": "Nidalee",
+    "妮蔻": "Neeko", "诺克萨斯之手": "Darius", "诺手": "Darius",
+    "努努": "Nunu", "女枪": "MissFortune", "女刀": "Katarina",
+    # ===== O =====
+    "欧拉夫": "Olaf",
+    # ===== P =====
+    "派克": "Pyke", "潘森": "Pantheon", "泡芙": "Lulu", "皮城女警": "Caitlyn",
+    "琴女": "Sona",
+    # ===== Q =====
+    "奇亚娜": "Qiyana", "琪亚娜": "Qiyana", "千珏": "Kindred", "青钢影": "Camille",
+    "球女": "Orianna", "曲奇": "Zac",
+    # ===== R =====
+    "瑞兹": "Ryze", "瑞文": "Riven", "锐雯": "Riven", "芮尔": "Rell",
+    "人马": "Hecarim", "瑞尔": "Rell",
+    # ===== S =====
+    "赛恩": "Sion", "赛拉斯": "Sylas", "赛娜": "Senna", "塞拉芬妮": "Seraphine",
+    "萨勒芬妮": "Seraphine", "塞特": "Sett", "沙漠皇帝": "Azir",
+    "厄运小姐": "MissFortune", "莎弥拉": "Samira",
+    "慎": "Shen", "石头人": "Malphite", "狮子狗": "Rengar",
+    "斯卡纳": "Skarner", "斯维因": "Swain", "索拉卡": "Soraka", "孙悟空": "MonkeyKing",
+    "松果": "Ivern", "索恩": "Sion",
+    "蛇女": "Cassiopeia", "深海泰坦": "Nautilus",
+    "时光老人": "Zilean", "时光": "Zilean",
+    "机器人": "Blitzcrank", "稻草人": "Fiddlesticks",
     "酒桶": "Gragas", "皇子": "JarvanIV", "螳螂": "Khazix",
-    "人马": "Hecarim", "薇恩": "Vayne", "亚索": "Yasuo",
-    "永恩": "Yone", "艾克": "Ekko", "EZ": "Ezreal",
-    "ez": "Ezreal", "VN": "Vayne", "vn": "Vayne",
-    "ADC": None,  # 通用标签不映射
+    "薇恩": "Vayne",
+    # ===== T =====
+    "塔里克": "Taric", "塔姆": "TahmKench", "塔莉垭": "Taliyah",
+    "泰达米尔": "Tryndamere", "泰坦": "Nautilus",
+    "探险家": "Ezreal", "提莫": "Teemo", "铁男": "Mordekaiser",
+    "图奇": "Twitch", "崔斯特": "TwistedFate", "崔丝塔娜": "Tristana",
+    "特朗德尔": "Trundle", "陶器": "Galio",
+    # ===== V/W =====
+    "薇古丝": "Vex", "薇": "Vi", "维克托": "Viktor", "维克兹": "VelKoz",
+    "维嘉": "Veigar", "小法": "Veigar", "小法师": "Veigar",
+    "韦鲁斯": "Varus", "蔚": "Vi", "沃里克": "Warwick",
+    "乌迪尔": "Udyr", "武器大师": "Jax",
+    "沃利贝尔": "Volibear", "狗熊": "Volibear",
+    "微光": "Milio",
+    # ===== X =====
+    "霞": "Xayah", "希尔科": "Silco", "希维尔": "Sivir", "辛吉德": "Singed",
+    "辛德拉": "Syndra", "锤石": "Thresh", "希瓦娜": "Shyvana",
+    "许尔马": "Xayah", "小鱼人": "Fizz", "小炮": "Tristana",
+    "瑟庄妮": "Sejuani", "虚空之女": "Kaisa",
+    "猩红收割者": "Vladimir", "兴奋": "Jinx",
+    # ===== Y =====
+    "亚索": "Yasuo", "亚托克斯": "Aatrox", "伊芙琳": "Evelynn", "伊泽瑞尔": "Ezreal",
+    "易": "MasterYi", "易大师": "MasterYi", "剑圣": "MasterYi",
+    "永恩": "Yone", "约里克": "Yorick", "约德尔": None, "尤米": "Yuumi",
+    "悠米": "Yuumi", "瑶": "Lillia", "影流之主": "Zed",
+    # ===== Z =====
+    "扎克": "Zac", "寨安": "Zaun", "泽拉斯": "Xerath",
+    "赵信": "XinZhao", "蜘蛛女皇": "Elise", "猪妹": "Sejuani",
+    "诸葛亮": None, "烬": "Jhin", "炸弹人": "Ziggs",
+    "祖安怒兽": "Warwick",
+    "艾翠丝": "Elise", "伊莉丝": "Elise",
+    "佐拉": "Zyra", "婕拉": "Zyra",
+    "老鼠": "Twitch", "猴子": "MonkeyKing", "蛮王": "Tryndamere",
+    "狗头": "Nasus", "牛头": "Alistar",
+    # ===== 英文简称 =====
+    "EZ": "Ezreal", "ez": "Ezreal", "VN": "Vayne", "vn": "Vayne",
+    "ADC": None,
 }
+
 
 # 全局缓存
 _cache = None
