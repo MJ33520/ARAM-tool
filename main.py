@@ -187,7 +187,7 @@ class App:
                 # 在加载界面 (InProgress) 进行秒级前瞻分析
                 if phase == "InProgress":
                     if not _match_analyzed_flag and not _is_analyzing and not _is_hextech_analyzing:
-                        rosters = get_loading_screen_rosters()
+                        rosters = get_loading_screen_rosters(override_my_champion=self._locked_champion)
                         if rosters:
                             log.info("🚀 发现新对局加载中！LCU 自动捕获 10 人阵容，正在无感生成攻略...")
                             _match_analyzed_flag = True

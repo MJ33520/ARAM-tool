@@ -442,7 +442,7 @@ def get_live_team_rosters() -> dict | None:
         "live_context": "\n".join(context)
     }
 
-def get_loading_screen_rosters() -> dict | None:
+def get_loading_screen_rosters(override_my_champion: str = None) -> dict | None:
     """
     通过 LCU 的 GameFlow 接口在加载界面（非游戏内）提前获取 10 人阵容。
     这是恢复极速自动分析的关键，不依赖于延迟启动的 2999 端口 API。
@@ -494,6 +494,10 @@ def get_loading_screen_rosters() -> dict | None:
     for p in their_team_data:
         cname = get_champion_name(p.get("championId", 0))
         their_team_players.append(cname)
+        
+    # 如果用户手动指定了英雄，强行覆盖 LCU 获取的判断兜底
+    if override_my_champion:
+        my_champion = override_my_champion
         
     context = [
         f"⭐【我选择的英雄】: {my_champion}（请重点分析我的出装、海克斯和打法）",
