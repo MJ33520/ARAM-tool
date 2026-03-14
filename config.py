@@ -20,7 +20,7 @@ if not GEMINI_API_KEY:
     print(s["api_key_url"])
     sys.exit(1)
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
 # ==================== 热键配置 ====================
 TOGGLE_HOTKEY = "Ctrl+F12"    # 切换悬浮窗显示/隐藏（全局热键，游戏中可用）

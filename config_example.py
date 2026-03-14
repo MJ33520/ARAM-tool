@@ -19,7 +19,7 @@ if GEMINI_API_KEY == "YOUR_API_KEY_HERE" or not GEMINI_API_KEY:
     # 但是对于 GitHub 发布，这里必须是空的/占位符
     pass
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
 # ==================== 热键配置 ====================
 TOGGLE_HOTKEY = "Ctrl+F12"    # 切换悬浮窗显示/隐藏
