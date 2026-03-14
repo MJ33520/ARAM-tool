@@ -138,7 +138,13 @@ def _fix_mojibake(s: str) -> str:
     if not isinstance(s, str):
         return s
     try:
+        # 第一层尝试：完美转换
         return s.encode('latin1').decode('utf-8')
+    except Exception:
+        pass
+    try:
+        # 第二层尝试：容错转换（丢弃尾部无法解析的损坏字节，保留前面的正常汉字）
+        return s.encode('latin1', errors='ignore').decode('utf-8', errors='ignore')
     except Exception:
         return s
 

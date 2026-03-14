@@ -57,6 +57,8 @@ STRINGS = {
         "hextech_btn_retry": "🔄 再截一次",
         "hextech_btn_close": "✕ 关闭",
         "hextech_no_global": "⚠️ 请先点 ⚔️ 全局分析，再使用海克斯分析",
+        "btn_history": "📜 记录",
+        "status_history_empty": "⚠️ 暂无海克斯记录",
     },
     "en": {
         # Floating buttons
@@ -112,6 +114,8 @@ STRINGS = {
         "hextech_btn_retry": "🔄 Retry",
         "hextech_btn_close": "✕ Close",
         "hextech_no_global": "⚠️ Please run ⚔️ Global Analysis first",
+        "btn_history": "📜 History",
+        "status_history_empty": "⚠️ No hextech history",
     },
 }
 

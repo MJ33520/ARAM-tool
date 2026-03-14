@@ -47,6 +47,7 @@ _is_analyzing = False
 _is_hextech_analyzing = False
 _global_strategy = None       # 全局攻略文本（缓存）
 _hextech_history = []          # 已选海克斯列表
+_hextech_result_history = []   # 本局海克斯分析原文历史
 _is_auto_grabbing = False     # 是否在后台自动抢英雄
 
 
@@ -108,6 +109,15 @@ class App:
         )
         self.btn_grab.pack(side=tk.LEFT, padx=(1, 1))
 
+        # 📜 记录 (History)
+        self.btn_history = tk.Button(
+            btn_frame, text=T("btn_history"), command=self._on_history,
+            bg="#1a1a2e", fg="#a855f7", activebackground="#2a2a4e",
+            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
+            padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+        )
+        self.btn_history.pack(side=tk.LEFT, padx=(1, 1))
+
         # 🔄 数据（ApexLol）
         if APEXLOL_ENABLED:
             sep3 = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
@@ -134,7 +144,7 @@ class App:
         # 拖拽
         self._drag_data = {"x": 0, "y": 0}
         drag_widgets = [self.btn_hextech, self.btn_show, self.btn_fix, self.btn_grab,
-                        sep2, sep_fix, self.status_label, btn_frame]
+                        self.btn_history, sep2, sep_fix, self.status_label, btn_frame]
         if APEXLOL_ENABLED:
             drag_widgets.extend([sep3, self.btn_data])
         for w in drag_widgets:
@@ -436,6 +446,7 @@ class App:
             if get_gameflow_phase() != "InProgress":
                 # 重置历史
                 _hextech_history = []
+                _hextech_result_history = []
                 # 加载界面分析完毕后，说明游戏开始了，可以解锁英雄，以便下局使用
                 if not manual_champion and self._locked_champion:
                     log.info(f"🔓 解除英雄锁定: {self._locked_champion}")
@@ -507,7 +518,8 @@ class App:
             elapsed = _time.time() - t1
             log.info(f"[Gemini] ⚡ 海克斯分析完成 ({elapsed:.1f}s)")
 
-            # 在主线程中显示结果
+            # 在主线程中显示结果并保存到历史
+            _hextech_result_history.append(result)
             self.root.after(0, lambda: self._show_hextech_result(result))
             log.info(f"海克斯分析总耗时 {_time.time()-t0:.1f}s")
 
@@ -1088,6 +1100,20 @@ class App:
             self._on_show()
         except Exception as e:
             log.error(f"恢复UI失败: {e}")
+
+    def _on_history(self):
+        """显示本局海克斯分析记录。"""
+        global _hextech_result_history
+        if not _hextech_result_history:
+            self.status_label.configure(text=T("status_history_empty"))
+            return
+
+        # 拼接历史记录内容
+        content = "📜 **海克斯分析历史记录 (按选择顺序)**\n\n"
+        content += "\n\n" + "=" * 30 + "\n\n"
+        content += "\n\n".join(_hextech_result_history)
+
+        self._show_global_result(content)
 
     def run(self):
         self.root.mainloop()
