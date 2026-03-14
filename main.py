@@ -204,7 +204,14 @@ class App:
                             self.root.after(0, lambda r=rosters: self._run_lcu_auto_analysis(r))
                 else:
                     # 如果不是在游戏中，则重置标记，准备迎接下一局
-                    _match_analyzed_flag = False
+                    if _match_analyzed_flag:
+                        log.info("🏁 对局结束或未处于游戏中，重置攻略与历史状态。")
+                        _match_analyzed_flag = False
+                        _hextech_history = []
+                        _global_strategy = ""
+                        self._locked_champion = None
+                        # 在主线程更新界面状态标签
+                        self.root.after(0, lambda: self.status_label.configure(text=T("status_idle")))
             except Exception as e:
                 pass
             time.sleep(3)
