@@ -137,6 +137,16 @@ def scrape_champion(champion_id: str) -> dict:
                 analysis_parts.append(text)
         entry["analysis"] = "\n".join(analysis_parts)
 
+        # 提取推荐出装（每张联动卡片下方可能有金色边框的装备图标）
+        item_elements = card.select(".island-item")
+        recommended_items = []
+        for item_el in item_elements:
+            item_name = item_el.get("data-item-name", "")
+            if item_name:
+                recommended_items.append(item_name)
+        if recommended_items:
+            entry["recommended_items"] = recommended_items
+
         if entry["analysis"]:  # 只保留有内容的卡片
             synergies.append(entry)
 

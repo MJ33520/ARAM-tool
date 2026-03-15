@@ -11,13 +11,20 @@ LANGUAGE = "zh"
 
 # ==================== Gemini API 配置 ====================
 # 从环境变量读取 API Key（必须设置）
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-if not GEMINI_API_KEY:
+# 从环境变量读取 API Key（必须设置）
+raw_key = os.environ.get("GEMINI_API_KEY", "")
+# 极限清除不可见字符 (BOM, 零宽字符, 各种引号和空白符)
+GEMINI_API_KEY = raw_key.strip(' \t\n\r"\'“”\ufeff\u200b')
+
+if not GEMINI_API_KEY or not GEMINI_API_KEY.startswith("AIza"):
     from lang import STRINGS
     s = STRINGS.get(LANGUAGE, STRINGS["zh"])
     print(s["api_key_missing"])
     print(s["api_key_method"])
     print(s["api_key_url"])
+    print("\n⚠️ 检查到您的 API_KEY 格式可能不正确（Gemini 密钥通常以 AIza 开头）！")
+    print(f"当前读取到的值是：{GEMINI_API_KEY[:5]}... (长度:{len(GEMINI_API_KEY)})")
+    print("如果您使用了文件保存或者 setx 命令，请确保没有多余的引号或乱码！")
     sys.exit(1)
 
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"

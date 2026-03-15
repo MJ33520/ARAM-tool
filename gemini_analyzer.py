@@ -271,7 +271,9 @@ def analyze_champion_quick_guide(champion_name: str) -> str:
         return final_output
 
     except Exception as e:
-        error_msg = f"❌ 极速前瞻失败: {str(e)}"
+        import traceback
+        trace = traceback.format_exc()
+        error_msg = f"❌ 极速前瞻失败: {str(e)}\n\n{trace}"
         log.error(error_msg)
         return error_msg
 

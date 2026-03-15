@@ -11,6 +11,14 @@ ARAM 智能助手 - 主入口
 
 import os
 import sys
+import io
+
+# Force utf-8 for stdout and stderr to prevent ascii encoding errors on Windows
+if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'encoding') and sys.stderr.encoding and sys.stderr.encoding.lower() not in ('utf-8', 'utf8'):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 import time as _time
 import threading
 import traceback
@@ -33,7 +41,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("ARAM")
 
-from screenshot import capture_screen
+from screenshot import capture_screen, capture_hextech_cards
 from gemini_analyzer import analyze_screenshot, analyze_hextech_choice, update_global_strategy
 from config import (
     OVERLAY_BG_COLOR, OVERLAY_FG_COLOR, OVERLAY_ACCENT_COLOR,
@@ -192,9 +200,11 @@ class App:
         while True:
             try:
                 phase = get_gameflow_phase()
+                # log.debug(f"[Monitor] Current phase: {phase}, analyzed: {_match_analyzed_flag}")
                 
-                # 在加载界面 (InProgress) 进行秒级前瞻分析
-                if phase == "InProgress":
+                # 在加载界面 (InProgress 或 GameStart) 进行秒级前瞻分析
+                # 兼容 WeGame 无畏契约/极速模式：在此模式下客户端可能会在 GameStart 后立即变成 None，以节省内存
+                if phase in ("InProgress", "GameStart"):
                     if not _match_analyzed_flag and not _is_analyzing and not _is_hextech_analyzing:
                         rosters = get_loading_screen_rosters(override_my_champion=self._locked_champion)
                         if rosters:
@@ -202,10 +212,12 @@ class App:
                             _match_analyzed_flag = True
                             # 在主线程中触发纯文本全量分析
                             self.root.after(0, lambda r=rosters: self._run_lcu_auto_analysis(r))
+                        else:
+                            log.warning("⚠️ LCU phase 为 InProgress，但获取不到有效阵容信息 (get_loading_screen_rosters 返回 None)")
                 else:
                     # 如果不是在游戏中，则重置标记，准备迎接下一局
                     if _match_analyzed_flag:
-                        log.info("🏁 对局结束或未处于游戏中，重置攻略与历史状态。")
+                        log.info(f"🏁 阶段变更为 {phase}，重置攻略与历史状态。")
                         _match_analyzed_flag = False
                         _hextech_history = []
                         _global_strategy = ""
@@ -213,10 +225,11 @@ class App:
                         # 在主线程更新界面状态标签
                         self.root.after(0, lambda: self.status_label.configure(text=T("status_idle")))
             except Exception as e:
-                pass
+                import traceback
+                log.error(f"[Monitor] LCU Monitor 异常: {e}\n{traceback.format_exc()}")
             time.sleep(3)
 
-    def _run_lcu_auto_analysis(self, rosters: dict):
+    def _run_lcu_auto_analysis(self, rosters: dict, is_correction: bool = False):
         """执行 LCU 纯文本全量分析（无截图界面）"""
         global _is_analyzing, _global_strategy, _hextech_history
         if _is_analyzing:
@@ -330,7 +343,7 @@ class App:
         t.start()
 
     def _on_fix(self):
-        """手动纠错/指定：弹窗询问英雄名，并触发极速前瞻 + 覆盖全局攻略英雄锁定"""
+        """手动纠错/指定：弹窗询问英雄名，并触发极速前瞻或全局重跑"""
         global _is_analyzing
         if _is_analyzing:
             return
@@ -342,27 +355,89 @@ class App:
             cmd = name.strip()
             log.info(f"用户手动指定英雄: {cmd}")
             self._locked_champion = cmd
-            self._run_quick_guide(cmd)
+            
+            # 尝试通过 LCU 获取完整的 10 人名单，如果有则重跑全局分析，没有则跑极速前瞻
+            from lcu_client import get_live_team_rosters, get_loading_screen_rosters
+            rosters = get_live_team_rosters(override_my_champion=cmd) or get_loading_screen_rosters(override_my_champion=cmd)
+            
+            if rosters:
+                log.info("[纠错] 获取到 LCU 10 人名单，启动全量纯文本重推...")
+                self._run_lcu_auto_analysis(rosters, is_correction=True)
+            else:
+                log.info("[纠错] 暂无 LCU 全场数据，只启动单人极速前瞻...")
+                self._run_quick_guide(cmd)
+                
         elif name is not None:
             from tkinter import messagebox
             messagebox.showwarning("⚠️", T("fix_error"), parent=self.root)
 
     def _on_toggle_grab(self):
-        """切换后台自动抢替补席状态"""
+        """切换后台自动抢替补席状态（首次点击先弹出心愿单编辑框）"""
         global _is_auto_grabbing
         if _is_auto_grabbing:
+            # 正在抢 → 停止
             _is_auto_grabbing = False
             self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00")
             self.status_label.configure(text="已停止自动监控替补席。")
-        else:
-            _is_auto_grabbing = True
-            self.btn_grab.configure(text="⏳ 抢选中", fg="#ffaa00")
-            self.status_label.configure(text="后台监控替补席中，发现心愿单英雄将自动秒抢 (不消耗API额度)！")
-            thread = threading.Thread(target=self._grab_loop, daemon=True)
-            thread.start()
+            return
+        
+        # 弹出编辑框让用户确认/修改心愿单
+        import tkinter.simpledialog as sd
+        import json
+        
+        wishlist_file = os.path.join(LOG_DIR, "grab_wishlist.json")
+        
+        # 读取现有心愿单
+        current_list = []
+        try:
+            if os.path.exists(wishlist_file):
+                with open(wishlist_file, "r", encoding="utf-8") as f:
+                    current_list = json.load(f).get("wishlist", [])
+        except Exception:
+            pass
+        
+        current_text = "、".join(current_list) if current_list else ""
+        
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        new_text = sd.askstring(
+            "🎯 心愿单设置（按优先级排序）",
+            f"请输入想抢的英雄名，用顿号或逗号分隔（排在前面的优先抢）：\n\n"
+            f"当前心愿单：{current_text if current_text else '（空）'}\n\n"
+            f"示例：卡特琳娜、金克斯、寒冰射手",
+            initialvalue=current_text,
+            parent=self.root
+        )
+        
+        if new_text is None:
+            # 用户点了取消
+            return
+        
+        # 解析输入：支持顿号、逗号、空格分隔
+        import re
+        names = [n.strip() for n in re.split(r'[、，,\s]+', new_text) if n.strip()]
+        
+        if not names:
+            from tkinter import messagebox
+            messagebox.showwarning("⚠️", "心愿单不能为空！请至少输入一个英雄名。", parent=self.root)
+            return
+        
+        # 保存到文件（持久化）
+        with open(wishlist_file, "w", encoding="utf-8") as f:
+            json.dump({"wishlist": names}, f, ensure_ascii=False, indent=2)
+        
+        log.info(f"[抢英雄] 心愿单已更新: {names}")
+        
+        # 启动后台监控
+        _is_auto_grabbing = True
+        display = " > ".join(names)
+        self.btn_grab.configure(text="⏳ 抢选中", fg="#ffaa00")
+        self.status_label.configure(text=f"🎯 心愿单: {display} | 后台监控替补席中...")
+        thread = threading.Thread(target=self._grab_loop, daemon=True)
+        thread.start()
 
     def _grab_loop(self):
-        """后台轮询抢选英雄"""
+        """后台轮询抢选英雄（按心愿单优先级排序）"""
         global _is_auto_grabbing
         import time, json
         from lcu_client import get_bench_info, swap_bench_champion
@@ -372,14 +447,14 @@ class App:
         while _is_auto_grabbing:
             try:
                 if not os.path.exists(wishlist_file):
-                    self.root.after(0, lambda: self.status_label.configure(text="❌ 未找到 grab_wishlist.json！请先在当前目录下配置。"))
+                    self.root.after(0, lambda: self.status_label.configure(text="❌ 未找到心愿单！请点击 🔄 抢英雄 设置。"))
                     _is_auto_grabbing = False
                     self.root.after(0, lambda: self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00"))
                     break
                 
                 with open(wishlist_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    wishlist = set(data.get("wishlist", []))
+                    wishlist = data.get("wishlist", [])  # 有序列表，前面优先级更高
                 
                 if not wishlist:
                     time.sleep(1)
@@ -397,17 +472,26 @@ class App:
                     continue
                 
                 bench = bench_info.get("bench", [])
-                for b in bench:
-                    if b["name"] in wishlist:
+                bench_names = {b["name"]: b for b in bench}
+                
+                # 按优先级遍历心愿单，优先抢排在前面的英雄
+                grabbed = False
+                for wanted in wishlist:
+                    if wanted in bench_names:
+                        b = bench_names[wanted]
                         success, current_msg = swap_bench_champion(b["id"])
                         if success:
-                            msg = f"🎉 成功帮您秒抢到【{b['name']}】！"
+                            msg = f"🎉 成功帮您秒抢到【{wanted}】！（优先级第 {wishlist.index(wanted)+1} 位）"
                             log.info(msg)
                             self.root.after(0, lambda m=msg: self.status_label.configure(text=m))
                             # 抢到就自动停止轮询
                             _is_auto_grabbing = False
                             self.root.after(0, lambda: self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00"))
+                            grabbed = True
                             break
+                if grabbed:
+                    break
+                    
             except Exception as e:
                 log.error(f"抢英雄监控失败: {e}")
                 time.sleep(2)
@@ -515,8 +599,8 @@ class App:
             t0 = _time.time()
             log.info("⚡ 开始海克斯分析")
 
-            png_bytes, filepath = capture_screen()
-            log.info(f"[截图] ✅ {len(png_bytes)} bytes ({_time.time()-t0:.1f}s)")
+            png_bytes, filepath = capture_hextech_cards()
+            log.info(f"[截图裁切] ✅ {len(png_bytes)} bytes ({_time.time()-t0:.1f}s)")
 
             t1 = _time.time()
             log.info("[Gemini] ⚡ 海克斯分析中...")

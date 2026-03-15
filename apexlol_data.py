@@ -379,16 +379,16 @@ def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
     # 按评级从高到低排序（SSS > SS > S > A > B > C > D）
     sorted_syns = sorted(synergies, key=lambda s: _parse_rating_key(s.get("rating", "")))
     
-    # 直接展示全部方案，按评级高低依次排列，有几个放几个
+    # 展示前 N 套方案，按评级高低依次排列
     if not sorted_syns:
         return ""
     
     lines = [
-        f"### 🎲 海克斯符文推荐：{cn_title}（数据来源: apexlol.info，按胜率排序）",
+        f"### 🎲 海克斯符文推荐：{cn_title}（数据来源: apexlol.info，按胜率只截取前 {top_n} 套）",
         ""
     ]
     
-    for i, syn in enumerate(sorted_syns):
+    for i, syn in enumerate(sorted_syns[:top_n]):
         hex_names = [_fix_mojibake(h) for h in syn.get("hex_names", [])]
         rating = _fix_mojibake(syn.get("rating", "")).upper()
         if not rating: rating = "未知"
@@ -398,11 +398,16 @@ def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
         
         hex_display = " + ".join(hex_names) if hex_names else "未知"
         
-        # 使用等级作为头衔，例如 【SSS 级推荐】
+        # 提取推荐出装（如果有）
+        rec_items = [_fix_mojibake(it) for it in syn.get("recommended_items", [])]
+        
+        # 使用等级作为头衔，例如 【SSS 级方案】
         lines.append(f"#### 🏆 【{rating} 级方案】 {f'({tiers})' if tiers else ''}")
         lines.append(f"- **核心组合**: {hex_display}")
         if tag:
             lines.append(f"- **流派标签**: {tag}")
+        if rec_items:
+            lines.append(f"- **搭配出装**: {' → '.join(rec_items)}")
         if analysis:
             lines.append(f"- **机制解析**: {analysis}")
         lines.append("")

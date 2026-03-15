@@ -10,6 +10,11 @@ import json
 import urllib3
 import psutil
 import requests
+try:
+    from logger import log
+except ImportError:
+    import logging
+    log = logging.getLogger("LCU")
 
 # 禁用 SSL 警告（LCU 使用自签名证书）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -477,7 +482,8 @@ def get_loading_screen_rosters(override_my_champion: str = None) -> dict | None:
     # 判断我们在哪个队伍
     my_team_is_one = False
     for p in team_one:
-        if p.get("summonerName") == local_name or p.get("puuid") == local_puuid:
+        # 必须确保有值，否则空字符串会错误匹配
+        if (local_name and p.get("summonerName") == local_name) or (local_puuid and p.get("puuid") == local_puuid):
             my_team_is_one = True
             break
             
@@ -488,20 +494,17 @@ def get_loading_screen_rosters(override_my_champion: str = None) -> dict | None:
         champ_id = p.get("championId", 0)
         cname = get_champion_name(champ_id)
         my_team_players.append(cname)
-        if p.get("summonerName") == local_name or p.get("puuid") == local_puuid:
+        if (local_name and p.get("summonerName") == local_name) or (local_puuid and p.get("puuid") == local_puuid):
             my_champion = cname
             
     for p in their_team_data:
         cname = get_champion_name(p.get("championId", 0))
         their_team_players.append(cname)
         
-    # 优先级逻辑：
-    # 1. 如果 LCU 识别到了我的英雄且不是“未知英雄”，则以 LCU 为准（自动纠正用户手动输入的错别字/别名）
-    # 2. 如果 LCU 没识别到（未知英雄），或者 LCU 没联通，才使用手动指定的英雄作为兜底
-    if my_champion != "未知英雄" and override_my_champion and my_champion != override_my_champion:
-        log.info(f"[LCU] 🔄 自动纠正手动指定的英雄名: {override_my_champion} -> {my_champion}")
-    
-    if my_champion == "未知英雄" and override_my_champion:
+    # 优先级逻辑：如果传入了 override_my_champion（手动纠错），则绝对以手动为准（无条件覆盖 LCU 数据）
+    if override_my_champion:
+        if my_champion != "未知英雄" and my_champion != override_my_champion:
+            log.info(f"[LCU] 🚨 手动纠错强行覆盖 LCU 识别: {my_champion} -> {override_my_champion}")
         my_champion = override_my_champion
         
     context = [
@@ -571,6 +574,12 @@ def get_full_board_state() -> str | None:
         
         champ_en = p.get("championName")
         cn_name = _champion_id_to_cn.get(champ_en, champ_en)
+        
+        # 优先级逻辑：如果有手动纠错，强行认定指定的英雄为自己
+        if override_my_champion and cn_name == override_my_champion:
+            is_me = True
+            log.info(f"[LCU 战中] 🚨 手动纠错强行匹配队伍内英雄: {override_my_champion}")
+        
         if is_me:
             my_champ_cn = cn_name
             cn_name = f"⭐【我】{cn_name}"
