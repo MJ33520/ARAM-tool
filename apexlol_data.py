@@ -468,6 +468,38 @@ def get_cache_info(cache_dir: str) -> dict:
         return {"exists": False}
 
 
+def get_hextech_description(hextech_name: str) -> str:
+    """获取指定海克斯的官方效果描述和特殊机制。
+
+    Args:
+        hextech_name: 海克斯中文名 (如 "罪恶快感", "速度恶魔")
+
+    Returns:
+        包含描述和机制的文本，如果没找到则返回空字符串。
+    """
+    global _cache
+    if not _cache:
+        return ""
+
+    details = _cache.get("hextech_details", {})
+    # 模糊匹配
+    fixed_name = _fix_mojibake(hextech_name)
+    for k, v in details.items():
+        fixed_k = _fix_mojibake(k)
+        if fixed_name in fixed_k or fixed_k in fixed_name:
+            desc = _fix_mojibake(v.get("description", ""))
+            mech = _fix_mojibake(v.get("mechanism", ""))
+            
+            result_parts = []
+            if desc:
+                result_parts.append(desc)
+            if mech:
+                result_parts.append(f"[特殊机制] {mech}")
+            return " | ".join(result_parts)
+
+    return ""
+
+
 # ==================== OCR 本地海克斯快速推荐 ====================
 _ocr_engine = None
 

@@ -240,12 +240,30 @@ def analyze_hextech_text(ocr_names: list[str], hextech_history: list[str],
 
         # 纯文字内容（无图片！）
         options_text = "、".join(ocr_names)
+
+        # 注入每个选项的真实效果描述（防止AI幻觉）
+        effect_lines = []
+        if APEXLOL_ENABLED:
+            try:
+                from apexlol_data import get_hextech_description
+                for name in ocr_names:
+                    desc = get_hextech_description(name)
+                    if desc:
+                        effect_lines.append(f"- 【{name}】: {desc}")
+                    else:
+                        effect_lines.append(f"- 【{name}】: (效果未知)")
+            except Exception:
+                pass
+
         api_contents = [
             f"当前海克斯3选1的选项是：【{options_text}】\n\n"
             f"请根据以下数据，告诉我应该选哪个。\n\n"
         ]
+        if effect_lines:
+            api_contents.append("📋【各选项的真实游戏效果】（以下是官方描述，请严格基于此判断）\n"
+                                + "\n".join(effect_lines) + "\n")
         if prefilled_augments:
-            api_contents.append(f"🚀【该英雄的海克斯数据】\n{prefilled_augments}\n")
+            api_contents.append(f"🚀【该英雄的海克斯联动数据】\n{prefilled_augments}\n")
         api_contents.append(prompt)
 
         response = _call_with_retry(

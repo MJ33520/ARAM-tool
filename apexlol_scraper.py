@@ -216,13 +216,148 @@ def scrape_all_champions(cache_dir: str, progress_callback=None) -> dict:
         if i < total - 1:
             time.sleep(REQUEST_DELAY)
 
+    # ===== 爬取所有海克斯效果描述 =====
+    log.info("[ApexLol] 开始爬取海克斯效果描述...")
+    hextech_details = scrape_all_hextech(progress_callback)
+    all_data["hextech_details"] = hextech_details
+    log.info(f"[ApexLol] ✅ 已爬取 {len(hextech_details)} 个海克斯效果描述")
+
     # 保存到文件
     cache_file = os.path.join(cache_dir, "apexlol_data.json")
     with open(cache_file, "w", encoding="utf-8") as f:
         json.dump(all_data, f, ensure_ascii=False, indent=2)
 
-    log.info(f"[ApexLol] ✅ 已缓存 {total} 个英雄数据到 {cache_file}")
+    log.info(f"[ApexLol] ✅ 已缓存 {total} 个英雄 + {len(hextech_details)} 个海克斯到 {cache_file}")
     return all_data
+
+
+# ==================== 海克斯详情爬取 ====================
+
+def get_hextech_list() -> list[dict]:
+    """从海克斯列表页获取所有海克斯的 ID 和中文名。
+
+    Returns:
+        [{"id": "Get_Excited", "name": "罪恶快感"}, ...]
+    """
+    url = f"{BASE_URL}/hextech/"
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        log.error(f"[ApexLol] 获取海克斯列表失败: {e}")
+        return []
+
+    resp.encoding = "utf-8"
+    soup = BeautifulSoup(resp.text, "html.parser")
+    hextech_list = []
+    seen = set()
+
+    for link in soup.find_all("a", href=True):
+        href = link.get("href", "")
+        match = re.search(r"/zh/hextech/([^/]+)$", href)
+        if not match:
+            continue
+        hex_id = match.group(1)
+        name = link.get_text(strip=True)
+        if hex_id not in seen and name:
+            seen.add(hex_id)
+            hextech_list.append({"id": hex_id, "name": name})
+
+    log.info(f"[ApexLol] 获取到 {len(hextech_list)} 个海克斯")
+    return hextech_list
+
+
+def scrape_hextech_detail(hex_id: str) -> dict:
+    """爬取单个海克斯的效果描述和特殊机制。
+
+    Args:
+        hex_id: 海克斯 ID（如 "Get_Excited", "42"）
+
+    Returns:
+        {"name": "罪恶快感", "tier": "黄金阶", "description": "...", "mechanism": "..."}
+    """
+    url = f"{BASE_URL}/hextech/{hex_id}"
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        log.warning(f"[ApexLol] 爬取海克斯 {hex_id} 失败: {e}")
+        return {}
+
+    resp.encoding = "utf-8"
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    result = {}
+
+    # 名称和阶级
+    title_section = soup.select_one(".title-section")
+    if title_section:
+        result["name"] = title_section.get_text(strip=True)
+        # 阶级从 header-card 的 class 判断
+        header = soup.select_one(".header-card")
+        if header:
+            classes = header.get("class", [])
+            for tier in ["prismatic", "gold", "silver"]:
+                if tier in classes:
+                    tier_map = {"prismatic": "棱彩阶", "gold": "黄金阶", "silver": "白银阶"}
+                    result["tier"] = tier_map.get(tier, tier)
+                    break
+
+    # 效果描述
+    desc_box = soup.select_one(".description-box")
+    if desc_box:
+        result["description"] = desc_box.get_text(strip=True)
+
+    # 特殊机制
+    mech_box = soup.select_one(".mechanism-box")
+    if mech_box:
+        text = mech_box.get_text(strip=True)
+        if "暂无" not in text:
+            result["mechanism"] = text
+
+    return result
+
+
+def scrape_all_hextech(progress_callback=None) -> dict:
+    """爬取所有海克斯的效果描述。
+
+    Returns:
+        {"罪恶快感": {"tier": "黄金阶", "description": "...", "mechanism": "..."}, ...}
+    """
+    hex_list = get_hextech_list()
+    if not hex_list:
+        return {}
+
+    details = {}
+    total = len(hex_list)
+
+    for i, hex_info in enumerate(hex_list):
+        hex_id = hex_info["id"]
+        hex_name = hex_info["name"]
+
+        if progress_callback:
+            progress_callback(i + 1, total, f"海克斯: {hex_name}")
+
+        detail = scrape_hextech_detail(hex_id)
+        if detail and detail.get("description"):
+            # 以中文名为 key
+            display_name = detail.get("name", hex_name)
+            # 去掉阶级前缀（如"黄金阶罪恶快感" → "罪恶快感"）
+            for prefix in ["棱彩阶", "黄金阶", "白银阶"]:
+                if display_name.startswith(prefix):
+                    display_name = display_name[len(prefix):]
+                    break
+            details[display_name] = {
+                "tier": detail.get("tier", ""),
+                "description": detail.get("description", ""),
+            }
+            if detail.get("mechanism"):
+                details[display_name]["mechanism"] = detail["mechanism"]
+
+        if i < total - 1:
+            time.sleep(REQUEST_DELAY * 0.5)  # 海克斯页面较轻，间隔可以短一点
+
+    return details
 
 
 if __name__ == "__main__":
