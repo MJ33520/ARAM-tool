@@ -530,22 +530,29 @@ class App:
     def _extract_hextech_name(self, analysis_text: str) -> str:
         """从海克斯分析结果中提取推荐的符文名。"""
         import re
+        
         # 优先级 1: 匹配箭头指向的推荐项 (例如 **选项1：全能吸取** ← 选这个)
         match = re.search(r'\*\*(?:选项|Option)\s*\w[：:]\s*(.+?)\*\*\s*←', analysis_text)
         if match:
             return match.group(1).strip()
         
-        # 优先级 2: 匹配加粗的选项行 (例如 **选项1：全能吸取**)
+        # 优先级 2: 匹配【推荐选择：XXX】格式（OCR+AI 混合输出）
+        match = re.search(r'推荐选择[：:]\s*【(.+?)】', analysis_text)
+        if match:
+            return match.group(1).strip()
+        
+        # 优先级 3: 匹配加粗的选项行，去掉"选项X："前缀
         match = re.search(r'\*\*(?:选项|Option)\s*\w[：:]\s*(.+?)\*\*', analysis_text)
         if match:
-            # 过滤干扰词
             name = match.group(1).strip()
             return name.split("---")[0].split("(")[0].strip()
 
-        # 优先级 3: 匹配第一个加粗的短语（通常是第一个推荐项）
+        # 优先级 4: 匹配第一个加粗的短语
         match = re.search(r'\*\*(.+?)\*\*', analysis_text)
         if match:
             name = match.group(1).strip()
+            # 去掉可能残留的"选项X："前缀
+            name = re.sub(r'^(?:选项|Option)\s*\w?[：:]\s*', '', name)
             if 1 < len(name) < 25: 
                 return name
 
