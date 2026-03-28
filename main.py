@@ -184,8 +184,20 @@ class App:
                 # 兼容 WeGame 无畏契约/极速模式：在此模式下客户端可能会在 GameStart 后立即变成 None，以节省内存
                 if phase in ("InProgress", "GameStart"):
                     if not _match_analyzed_flag and not _is_analyzing and not _is_hextech_analyzing:
-                        rosters = get_loading_screen_rosters(override_my_champion=self._locked_champion)
+                        # 先不传 override，让 LCU 返回真实英雄
+                        rosters = get_loading_screen_rosters()
                         if rosters:
+                            lcu_champ = rosters.get("my_champion")
+                            # 如果用户之前手动输入过英雄，但 LCU 检测到的不一致，说明换了英雄
+                            if self._locked_champion and lcu_champ and lcu_champ != "未知英雄":
+                                if self._locked_champion != lcu_champ:
+                                    log.info(f"[LCU] 🔄 检测到换人: 手动输入={self._locked_champion} → LCU实际={lcu_champ}，以实际为准")
+                                    self._locked_champion = lcu_champ
+                                # 用最终确认的英雄名覆盖 rosters
+                                rosters = get_loading_screen_rosters(override_my_champion=self._locked_champion)
+                            elif self._locked_champion:
+                                # LCU 没检测到英雄（未知），保留手动输入
+                                rosters = get_loading_screen_rosters(override_my_champion=self._locked_champion)
                             log.info("🚀 发现新对局加载中！LCU 自动捕获 10 人阵容，正在无感生成攻略...")
                             _match_analyzed_flag = True
                             # 在主线程中触发纯文本全量分析
