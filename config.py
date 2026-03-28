@@ -19,13 +19,13 @@ GEMINI_API_KEY = raw_key.strip(' \t\n\r"\'“”\ufeff\u200b')
 if not GEMINI_API_KEY or not GEMINI_API_KEY.startswith("AIza"):
     from lang import STRINGS
     s = STRINGS.get(LANGUAGE, STRINGS["zh"])
-    print(s["api_key_missing"])
-    print(s["api_key_method"])
-    print(s["api_key_url"])
-    print("\n⚠️ 检查到您的 API_KEY 格式可能不正确（Gemini 密钥通常以 AIza 开头）！")
-    print(f"当前读取到的值是：{GEMINI_API_KEY[:5]}... (长度:{len(GEMINI_API_KEY)})")
-    print("如果您使用了文件保存或者 setx 命令，请确保没有多余的引号或乱码！")
-    sys.exit(1)
+    print("\n" + "=" * 50)
+    print("⚠️  未检测到有效的 Gemini API Key，AI 攻略功能不可用")
+    print("   仍可使用：🔄 数据爬取 + ✏️ 纯数据查表模式")
+    print(f"   配置方法: {s['api_key_method']}")
+    print(f"   获取密钥: {s['api_key_url']}")
+    print("=" * 50 + "\n")
+    GEMINI_API_KEY = ""  # 不退出，允许纯数据模式运行
 
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 

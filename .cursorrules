@@ -1,0 +1,6 @@
+# 编码与字符集规范 (Encoding Rules)
+
+1. **绝对 UTF-8 优先**：所有的文件读写操作（特别是 Python 脚本的 `open()` 函数）必须显式强制指定 `encoding="utf-8"`。
+2. **终端乱码防范**：在 Windows 系统的命令行（cmd/powershell）中执行带中文字符的 Python one-liner（单行脚本）或 Bash 命令时，极易因系统默认的 GBK 编码导致乱码。
+3. **禁用终端传中文**：严禁通过 `python -c "..."` 或 echo 等 shell 命令向文件写入或传递包含中文的字符串。
+4. **强制使用工具 API**：凡是涉及中文字符的修改（如替换、插入、创建文件），必须使用系统提供的专用代码层工具（如 `replace_file_content` 或 `write_to_file`），依赖原生 API 确保 UTF-8 编码不被破坏。

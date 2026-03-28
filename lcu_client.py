@@ -106,8 +106,8 @@ def _lcu_request(port: int, token: str, endpoint: str) -> dict | list | None:
             return response.json()
         else:
             return None
-    except requests.exceptions.ConnectionError:
-        # 连接被拒绝 = 客户端已关闭，清除缓存
+    except (requests.exceptions.ConnectionError, ConnectionResetError):
+        # 连接被拒绝/重置 = 客户端已关闭，清除缓存
         _invalidate_cache()
         return None
     except Exception:
@@ -371,12 +371,6 @@ def get_live_player_status() -> str | None:
     return "\n".join(status)
 
 
-
-    # 也可以加入队友/敌方关键大件信息（可选）
-    
-    return "\n".join(status)
-
-
 def get_live_team_rosters() -> dict | None:
     """
     基于 Live Client Data API (无须截屏) 获取当局所有玩家的阵容信息。
@@ -575,11 +569,6 @@ def get_full_board_state() -> str | None:
         champ_en = p.get("championName")
         cn_name = _champion_id_to_cn.get(champ_en, champ_en)
         
-        # 优先级逻辑：如果有手动纠错，强行认定指定的英雄为自己
-        if override_my_champion and cn_name == override_my_champion:
-            is_me = True
-            log.info(f"[LCU 战中] 🚨 手动纠错强行匹配队伍内英雄: {override_my_champion}")
-        
         if is_me:
             my_champ_cn = cn_name
             cn_name = f"⭐【我】{cn_name}"
@@ -614,12 +603,8 @@ def get_full_board_state() -> str | None:
     
     return "\n".join(status)
 
-# ==================== 秒换英雄功能 ====================
 
-
-def is_client_running() -> bool:
-    """检测 LoL 客户端是否在运行。"""
-    return _get_connection() is not None
+# ==================== 游戏阶段与等级监控 ====================
 
 
 def get_gameflow_phase() -> str | None:
@@ -644,78 +629,45 @@ def get_gameflow_phase() -> str | None:
     return None
 
 
+def get_player_level() -> int | None:
+    """从 Live Client Data API 获取当前玩家等级（游戏中可用）。"""
+    data = get_live_game_data()
+    if not data:
+        return None
+    return data.get("activePlayer", {}).get("level")
+
+
+def get_player_augment_count() -> int:
+    """
+    获取当前玩家已选的海克斯符文数量。
+    通过 Live Client Data API 的 runes 字段来检测。
+    返回已选海克斯数量（基础符文之外的额外符文）。
+    """
+    data = get_live_game_data()
+    if not data:
+        return 0
+    
+    all_players = data.get("allPlayers", [])
+    active_player = data.get("activePlayer", {})
+    summoner_name = active_player.get("summonerName")
+    
+    me = next((p for p in all_players if p.get("summonerName") == summoner_name), None)
+    if not me:
+        return 0
+    
+    # runes 里的 generalRunes 通常包含基础符文 + 海克斯增强
+    # 基础符文数量通常为 6-9 个，海克斯符文在游戏中会额外出现
+    runes_data = me.get("runes", {})
+    general_runes = runes_data.get("generalRunes", [])
+    
+    # 海克斯符文的 perkId 一般 > 100000 (区分基础符文)
+    augment_count = sum(1 for r in general_runes if r.get("id", 0) > 100000)
+    return augment_count
+
+
 def get_bench_info() -> dict | None:
-    """
-    获取替补席英雄列表和当前英雄信息。
-
-    Returns:
-        dict 包含:
-        - my_champion_id: int - 我当前的英雄 ID
-        - my_champion_name: str - 我当前的英雄名
-        - bench: list[dict] - 替补席英雄列表 [{"id": int, "name": str}, ...]
-        - bench_enabled: bool - 替补席是否可用
-        或 None（不在英雄选择阶段）
-    """
-    conn = _get_connection()
-    if not conn:
-        return None
-    port, token = conn
-
-    session = _lcu_request(port, token, "/lol-champ-select/v1/session")
-    if not session:
-        return None
-
-    _load_champion_names()
-
-    local_cell_id = session.get("localPlayerCellId", -1)
-    my_champ_id = 0
-
-    for player in session.get("myTeam", []):
-        if player.get("cellId") == local_cell_id:
-            my_champ_id = player.get("championId", 0)
-            break
-
-    bench_ids = session.get("benchChampionIds", [])
-    bench = []
-    for cid in bench_ids:
-        bench.append({
-            "id": cid,
-            "name": get_champion_name(cid),
-        })
-
-    return {
-        "my_champion_id": my_champ_id,
-        "my_champion_name": get_champion_name(my_champ_id) if my_champ_id > 0 else "???",
-        "bench": bench,
-        "bench_enabled": session.get("benchEnabled", False),
-    }
-
-
-def swap_bench_champion(champion_id: int) -> tuple[bool, str]:
-    """
-    与替补席英雄交换。
-
-    Args:
-        champion_id: 要换入的英雄 ID
-
-    Returns:
-        tuple: (成功与否, 消息)
-    """
-    conn = _get_connection()
-    if not conn:
-        return False, "未连接到客户端"
-    port, token = conn
-
-    status_code, data = _lcu_post(
-        port, token,
-        f"/lol-champ-select/v1/session/bench/swap/{champion_id}"
-    )
-
-    if status_code == 200 or status_code == 204:
-        champ_name = get_champion_name(champion_id)
-        return True, f"✅ 已换入 {champ_name}"
-    else:
-        return False, f"❌ 换人失败 (HTTP {status_code}): {data}"
+    """[DEPRECATED] 获取替补席信息（已废弃，保留空壳避免外部引用报错）"""
+    return None
 
 
 if __name__ == "__main__":
@@ -729,13 +681,5 @@ if __name__ == "__main__":
         print(f"我方英雄: {info['my_team']}")
         print(f"对方英雄: {info['their_team']}")
         print(f"阶段: {info['phase']}")
-
-        # 测试替补席
-        bench = get_bench_info()
-        if bench:
-            print(f"\n🪑 替补席: {[b['name'] for b in bench['bench']]}")
     else:
         print("\n❌ 无法连接到 LoL 客户端或不在英雄选择阶段")
-        print("请确保：")
-        print("  1. 英雄联盟客户端已启动")
-        print("  2. 正在进行英雄选择")

@@ -41,8 +41,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("ARAM")
 
-from screenshot import capture_screen, capture_hextech_cards
-from gemini_analyzer import analyze_screenshot, analyze_hextech_choice, update_global_strategy
+from screenshot import capture_hextech_cards
+from gemini_analyzer import analyze_hextech_choice
 from config import (
     OVERLAY_BG_COLOR, OVERLAY_FG_COLOR, OVERLAY_ACCENT_COLOR,
     OVERLAY_TITLE_COLOR, OVERLAY_WIDTH, OVERLAY_MAX_HEIGHT,
@@ -55,8 +55,6 @@ _is_analyzing = False
 _is_hextech_analyzing = False
 _global_strategy = None       # 全局攻略文本（缓存）
 _hextech_history = []          # 已选海克斯列表
-_hextech_result_history = []   # 本局海克斯分析原文历史
-_is_auto_grabbing = False     # 是否在后台自动抢英雄
 
 
 class App:
@@ -108,23 +106,6 @@ class App:
         sep_fix = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
                         font=("Microsoft YaHei UI", 11))
         sep_fix.pack(side=tk.LEFT)
-        # 🔄 抢英雄 (Auto-Grab)
-        self.btn_grab = tk.Button(
-            btn_frame, text="🔄 抢英雄", command=self._on_toggle_grab,
-            bg="#1a1a2e", fg="#00ff00", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
-            padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        self.btn_grab.pack(side=tk.LEFT, padx=(1, 1))
-
-        # 📜 记录 (History)
-        self.btn_history = tk.Button(
-            btn_frame, text=T("btn_history"), command=self._on_history,
-            bg="#1a1a2e", fg="#a855f7", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
-            padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        self.btn_history.pack(side=tk.LEFT, padx=(1, 1))
 
         # 🔄 数据（ApexLol）
         if APEXLOL_ENABLED:
@@ -151,8 +132,8 @@ class App:
 
         # 拖拽
         self._drag_data = {"x": 0, "y": 0}
-        drag_widgets = [self.btn_hextech, self.btn_show, self.btn_fix, self.btn_grab,
-                        self.btn_history, sep2, sep_fix, self.status_label, btn_frame]
+        drag_widgets = [self.btn_hextech, self.btn_show, self.btn_fix,
+                        sep2, sep_fix, self.status_label, btn_frame]
         if APEXLOL_ENABLED:
             drag_widgets.extend([sep3, self.btn_data])
         for w in drag_widgets:
@@ -174,9 +155,6 @@ class App:
 
         # ===== 状态与缓存 =====
         self._locked_champion: str = None # 记录手动锁定的英雄名
-        
-        # 全局热键 (Ctrl+F12)
-        self._start_hotkey_listener()
 
         # 启动时加载 ApexLol 缓存
         if APEXLOL_ENABLED:
@@ -192,15 +170,15 @@ class App:
 
     def _lcu_live_monitor(self):
         """后台轮询 LCU API，在加载界面即自动触发分析。"""
-        global _is_analyzing, _is_hextech_analyzing
+        global _is_analyzing, _is_hextech_analyzing, _global_strategy, _hextech_history
         _match_analyzed_flag = False
         from lcu_client import get_loading_screen_rosters, get_gameflow_phase
         import time
+
         
         while True:
             try:
                 phase = get_gameflow_phase()
-                # log.debug(f"[Monitor] Current phase: {phase}, analyzed: {_match_analyzed_flag}")
                 
                 # 在加载界面 (InProgress 或 GameStart) 进行秒级前瞻分析
                 # 兼容 WeGame 无畏契约/极速模式：在此模式下客户端可能会在 GameStart 后立即变成 None，以节省内存
@@ -214,10 +192,13 @@ class App:
                             self.root.after(0, lambda r=rosters: self._run_lcu_auto_analysis(r))
                         else:
                             log.warning("⚠️ LCU phase 为 InProgress，但获取不到有效阵容信息 (get_loading_screen_rosters 返回 None)")
+                    
+
+                    
                 else:
                     # 如果不是在游戏中，则重置标记，准备迎接下一局
                     if _match_analyzed_flag:
-                        log.info(f"🏁 阶段变更为 {phase}，重置攻略与历史状态。")
+                        log.info(f"🏁 阶段变更为 {phase}，重置攻略状态。")
                         _match_analyzed_flag = False
                         _hextech_history = []
                         _global_strategy = ""
@@ -237,7 +218,7 @@ class App:
         
         _is_analyzing = True
         self._detected_champion = rosters.get("my_champion") # 记录当前对局识别到的英雄
-        self.status_label.configure(text="全自动 LCU 数据分析中...")
+        self.status_label.configure(text=T("status_lcu_analyzing"))
         
         # 弹窗提示
         self._on_show()
@@ -262,7 +243,7 @@ class App:
                 self.root.after(0, lambda: self._show_global_result(f"❌ LCU 分析出错:\n{e}"))
             finally:
                 _is_analyzing = False
-                self.root.after(0, self._restore_ui_state)
+                self.root.after(0, lambda: self.status_label.configure(text=T("status_done")))
                 
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
@@ -271,7 +252,7 @@ class App:
     def _console_input_listener(self):
         """后台监听命令行输入，支持开局前手动指定英雄。"""
         print("\n" + "="*50)
-        print("💻 终端手动输入已启用！\n您可以直接在此窗口打字输入英雄名并回车，将立刻为您分析！")
+        print("◆ 终端手动输入已启用！\n   您可以直接在此窗口打字输入英雄名并回车，将立刻为您分析！")
         print("="*50 + "\n")
         
         while True:
@@ -310,7 +291,7 @@ class App:
             return
         
         _is_analyzing = True
-        self.status_label.configure(text=T("status_analyzing"))
+        self.status_label.configure(text=T("status_quick_analyzing"))
         
         # 弹窗显示前瞻正在进行
         self._on_show()
@@ -342,8 +323,43 @@ class App:
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
 
+    def _run_pure_data_guide(self, champion_name: str):
+        """纯 ApexLol 数据查表模式（无需 AI 也无需 LCU），直接展示海克斯方案。"""
+        global _is_analyzing
+        _is_analyzing = True
+        self.status_label.configure(text="📊 纯数据模式查表中...")
+
+        def _bg_task():
+            try:
+                from apexlol_data import extract_top_synergies, resolve_champion_id
+                # 先尝试解析英雄别名
+                resolved = resolve_champion_id(champion_name)
+                lookup_name = resolved if resolved else champion_name
+
+                result = extract_top_synergies(lookup_name)
+                if result:
+                    header = f"## 📊 纯数据模式（无 AI）\n**英雄**: {champion_name}"
+                    if resolved:
+                        header += f" → {resolved}"
+                    header += "\n\n> 以下数据来自 ApexLol 缓存，无需 AI 即可使用\n\n---\n\n"
+                    content = header + result
+                else:
+                    content = f"❌ 在 ApexLol 缓存中未找到 [{champion_name}] 的数据。\n\n请确认英雄名称是否正确，或点击 🔄 数据 按钮更新 ApexLol 缓存。"
+
+                self.root.after(0, lambda: self._show_global_result(content))
+                log.info(f"[纯数据] {champion_name} 查表完成")
+            except Exception as e:
+                log.error(f"纯数据查表失败: {e}")
+                self.root.after(0, lambda: self._show_global_result(f"❌ 纯数据查表失败:\n{e}"))
+            finally:
+                _is_analyzing = False
+                self.root.after(0, self._restore_ui_state)
+
+        t = threading.Thread(target=_bg_task, daemon=True)
+        t.start()
+
     def _on_fix(self):
-        """手动纠错/指定：弹窗询问英雄名，并触发极速前瞻或全局重跑"""
+        """手动指定英雄：3级降级策略 — LCU全局 → AI极速前瞻 → 纯数据查表"""
         global _is_analyzing
         if _is_analyzing:
             return
@@ -356,211 +372,36 @@ class App:
             log.info(f"用户手动指定英雄: {cmd}")
             self._locked_champion = cmd
             
-            # 尝试通过 LCU 获取完整的 10 人名单，如果有则重跑全局分析，没有则跑极速前瞻
-            from lcu_client import get_live_team_rosters, get_loading_screen_rosters
-            rosters = get_live_team_rosters(override_my_champion=cmd) or get_loading_screen_rosters(override_my_champion=cmd)
+            # ===== 第1级：尝试 LCU + AI 全局攻略 =====
+            try:
+                from lcu_client import get_live_team_rosters, get_loading_screen_rosters
+                rosters = get_live_team_rosters(override_my_champion=cmd) or get_loading_screen_rosters(override_my_champion=cmd)
+                if rosters:
+                    log.info("[指定英雄] 路径A: LCU + AI 全局攻略")
+                    self._run_lcu_auto_analysis(rosters, is_correction=True)
+                    return
+            except Exception as e:
+                log.warning(f"[指定英雄] LCU 不可用: {e}")
             
-            if rosters:
-                log.info("[纠错] 获取到 LCU 10 人名单，启动全量纯文本重推...")
-                self._run_lcu_auto_analysis(rosters, is_correction=True)
-            else:
-                log.info("[纠错] 暂无 LCU 全场数据，只启动单人极速前瞻...")
-                self._run_quick_guide(cmd)
+            # ===== 第2级：尝试 AI 极速前瞻（无需 LCU） =====
+            try:
+                from config import GEMINI_API_KEY
+                if GEMINI_API_KEY:
+                    log.info("[指定英雄] 路径B: AI 极速前瞻（无 LCU 阵容）")
+                    self._run_quick_guide(cmd)
+                    return
+            except Exception:
+                pass
+            
+            # ===== 第3级：纯 ApexLol 数据查表（无需 AI 也无需 LCU） =====
+            log.info("[指定英雄] 路径C: 纯 ApexLol 数据查表（无 AI 模式）")
+            self._run_pure_data_guide(cmd)
                 
         elif name is not None:
             from tkinter import messagebox
             messagebox.showwarning("⚠️", T("fix_error"), parent=self.root)
 
-    def _on_toggle_grab(self):
-        """切换后台自动抢替补席状态（首次点击先弹出心愿单编辑框）"""
-        global _is_auto_grabbing
-        if _is_auto_grabbing:
-            # 正在抢 → 停止
-            _is_auto_grabbing = False
-            self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00")
-            self.status_label.configure(text="已停止自动监控替补席。")
-            return
-        
-        # 弹出编辑框让用户确认/修改心愿单
-        import tkinter.simpledialog as sd
-        import json
-        
-        wishlist_file = os.path.join(LOG_DIR, "grab_wishlist.json")
-        
-        # 读取现有心愿单
-        current_list = []
-        try:
-            if os.path.exists(wishlist_file):
-                with open(wishlist_file, "r", encoding="utf-8") as f:
-                    current_list = json.load(f).get("wishlist", [])
-        except Exception:
-            pass
-        
-        current_text = "、".join(current_list) if current_list else ""
-        
-        self.root.lift()
-        self.root.attributes("-topmost", True)
-        new_text = sd.askstring(
-            "🎯 心愿单设置（按优先级排序）",
-            f"请输入想抢的英雄名，用顿号或逗号分隔（排在前面的优先抢）：\n\n"
-            f"当前心愿单：{current_text if current_text else '（空）'}\n\n"
-            f"示例：卡特琳娜、金克斯、寒冰射手",
-            initialvalue=current_text,
-            parent=self.root
-        )
-        
-        if new_text is None:
-            # 用户点了取消
-            return
-        
-        # 解析输入：支持顿号、逗号、空格分隔
-        import re
-        names = [n.strip() for n in re.split(r'[、，,\s]+', new_text) if n.strip()]
-        
-        if not names:
-            from tkinter import messagebox
-            messagebox.showwarning("⚠️", "心愿单不能为空！请至少输入一个英雄名。", parent=self.root)
-            return
-        
-        # 保存到文件（持久化）
-        with open(wishlist_file, "w", encoding="utf-8") as f:
-            json.dump({"wishlist": names}, f, ensure_ascii=False, indent=2)
-        
-        log.info(f"[抢英雄] 心愿单已更新: {names}")
-        
-        # 启动后台监控
-        _is_auto_grabbing = True
-        display = " > ".join(names)
-        self.btn_grab.configure(text="⏳ 抢选中", fg="#ffaa00")
-        self.status_label.configure(text=f"🎯 心愿单: {display} | 后台监控替补席中...")
-        thread = threading.Thread(target=self._grab_loop, daemon=True)
-        thread.start()
 
-    def _grab_loop(self):
-        """后台轮询抢选英雄（按心愿单优先级排序）"""
-        global _is_auto_grabbing
-        import time, json
-        from lcu_client import get_bench_info, swap_bench_champion
-        
-        wishlist_file = os.path.join(LOG_DIR, "grab_wishlist.json")
-        
-        while _is_auto_grabbing:
-            try:
-                if not os.path.exists(wishlist_file):
-                    self.root.after(0, lambda: self.status_label.configure(text="❌ 未找到心愿单！请点击 🔄 抢英雄 设置。"))
-                    _is_auto_grabbing = False
-                    self.root.after(0, lambda: self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00"))
-                    break
-                
-                with open(wishlist_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    wishlist = data.get("wishlist", [])  # 有序列表，前面优先级更高
-                
-                if not wishlist:
-                    time.sleep(1)
-                    continue
-
-                bench_info = get_bench_info()
-                if not bench_info:
-                    time.sleep(1)
-                    continue
-                
-                my_champ = bench_info.get("my_champion_name", "")
-                # 如果当前操作的就是心愿单里的英雄，则暂停抢夺以防误操作换出去
-                if my_champ in wishlist:
-                    time.sleep(1)
-                    continue
-                
-                bench = bench_info.get("bench", [])
-                bench_names = {b["name"]: b for b in bench}
-                
-                # 按优先级遍历心愿单，优先抢排在前面的英雄
-                grabbed = False
-                for wanted in wishlist:
-                    if wanted in bench_names:
-                        b = bench_names[wanted]
-                        success, current_msg = swap_bench_champion(b["id"])
-                        if success:
-                            msg = f"🎉 成功帮您秒抢到【{wanted}】！（优先级第 {wishlist.index(wanted)+1} 位）"
-                            log.info(msg)
-                            self.root.after(0, lambda m=msg: self.status_label.configure(text=m))
-                            # 抢到就自动停止轮询
-                            _is_auto_grabbing = False
-                            self.root.after(0, lambda: self.btn_grab.configure(text="🔄 抢英雄", fg="#00ff00"))
-                            grabbed = True
-                            break
-                if grabbed:
-                    break
-                    
-            except Exception as e:
-                log.error(f"抢英雄监控失败: {e}")
-                time.sleep(2)
-            
-            # 使用本地 LCU 接口轮询，不耗费任何网络 API Token，0.5秒一次毫无压力
-            time.sleep(0.5)
-
-    def _run_analysis(self, manual_champion: str = None):
-        global _is_analyzing, _global_strategy, _hextech_history
-        try:
-            t0 = _time.time()
-            
-            # 使用传入的、或之前控制台/纠错口锁定的英雄
-            target_champion = manual_champion or self._locked_champion
-            
-            # 智能分流：如果能获取到 10 人名单，首选纯文字极速分析
-            from lcu_client import get_live_team_rosters
-            rosters = get_live_team_rosters()
-            
-            if rosters:
-                log.info("[LCU] 🎲 成功捕获 10 人阵容名单，自动切入纯文本极速流！")
-                from gemini_analyzer import analyze_lcu_rosters
-                result = analyze_lcu_rosters(rosters, _hextech_history)
-                log.info(f"[Gemini] ✅ 极速文本分析完成 ({_time.time()-t0:.1f}s)")
-            else:
-                log.info(f"🎮 [回退截图流] 开始全局分析 {'(已锁定英雄: '+target_champion+')' if target_champion else ''}")
-                png_bytes, filepath = capture_screen()
-                log.info(f"[截图] ✅ {len(png_bytes)} bytes ({_time.time()-t0:.1f}s)")
-
-                t1 = _time.time()
-                log.info("[Gemini] ⏳ 全局截屏分析中...")
-                result = analyze_screenshot(
-                    png_bytes, 
-                    manual_champion=target_champion,
-                    hextech_history=_hextech_history
-                )
-                log.info(f"[Gemini] ✅ {len(result)} 字符 ({_time.time()-t1:.1f}s)")
-
-            _global_strategy = result
-
-            
-            # 只有在非游戏中（InProgress）阶段才重置历史，确保游戏内更新能继承记忆
-            from lcu_client import get_gameflow_phase
-            if get_gameflow_phase() != "InProgress":
-                # 重置历史
-                _hextech_history = []
-                _hextech_result_history = []
-                # 加载界面分析完毕后，说明游戏开始了，可以解锁英雄，以便下局使用
-                if not manual_champion and self._locked_champion:
-                    log.info(f"🔓 解除英雄锁定: {self._locked_champion}")
-                    self._locked_champion = None
-
-            # 在主线程中显示结果
-            self.root.after(0, lambda: self._show_global_result(result))
-            log.info(f"总耗时 {_time.time()-t0:.1f}s")
-
-        except Exception as e:
-            log.error(f"全局分析出错: {e}")
-            log.error(traceback.format_exc())
-            self.root.after(0, lambda: self._show_global_result(
-                f"{T('analysis_error')}\n\n{str(e)}"))
-        finally:
-            _is_analyzing = False
-            self.root.after(0, self._restore_analyze_btn)
-
-    def _restore_analyze_btn(self):
-        self.root.deiconify()
-        self.btn_analyze.configure(text=T("btn_analyze"), state=tk.NORMAL)
-        self.status_label.configure(text=T("status_done"))
 
     # ==================== 海克斯分析 ====================
     def _on_hextech(self):
@@ -615,8 +456,7 @@ class App:
             elapsed = _time.time() - t1
             log.info(f"[Gemini] ⚡ 海克斯分析完成 ({elapsed:.1f}s)")
 
-            # 在主线程中显示结果并保存到历史
-            _hextech_result_history.append(result)
+            # 在主线程中显示结果
             self.root.after(0, lambda: self._show_hextech_result(result))
             log.info(f"海克斯分析总耗时 {_time.time()-t0:.1f}s")
 
@@ -654,16 +494,7 @@ class App:
             if hextech_name:
                 _hextech_history.append(hextech_name)
                 log.info(f"[海克斯] 已选: {hextech_name}, 历史: {_hextech_history}")
-
                 self.status_label.configure(text=T("status_hextech_done"))
-
-                # 后台更新全局攻略
-                thread = threading.Thread(
-                    target=self._run_strategy_update,
-                    args=(hextech_name,),
-                    daemon=True,
-                )
-                thread.start()
 
     def _extract_hextech_name(self, analysis_text: str) -> str:
         """从海克斯分析结果中提取推荐的符文名。"""
@@ -691,37 +522,7 @@ class App:
         return None
 
 
-    def _run_strategy_update(self, latest_hextech: str):
-        """后台线程：更新全局攻略。"""
-        global _global_strategy
-        try:
-            updated = update_global_strategy(
-                _global_strategy, _hextech_history, latest_hextech, timeout=15.0
-            )
-            if updated:
-                _global_strategy = updated
-                log.info("[更新] 全局攻略已更新")
-                # 如果全局面板可见，刷新内容
-                self.root.after(0, lambda: self._refresh_global_overlay(updated))
-                self.root.after(0, lambda: self.status_label.configure(
-                    text=T("status_hextech_updated")))
-            else:
-                log.info("[更新] 全局攻略更新超时或失败，保持原攻略")
-                self.root.after(0, lambda: self.status_label.configure(
-                    text=T("status_done")))
-        except Exception as e:
-            log.error(f"[更新] 全局攻略更新异常: {e}")
 
-    def _refresh_global_overlay(self, content: str):
-        """刷新全局攻略面板内容（不重建窗口）。"""
-        if self.overlay and self.overlay_text:
-            try:
-                self.overlay_text.configure(state=tk.NORMAL)
-                self.overlay_text.delete("1.0", tk.END)
-                self._render_markdown(self.overlay_text, content)
-                self.overlay_text.configure(state=tk.DISABLED)
-            except Exception:
-                pass
 
     # ==================== ApexLol 数据 ====================
     def _init_apexlol_cache(self):
@@ -737,7 +538,7 @@ class App:
                 self.status_label.configure(
                     text=T("status_data_loaded").format(info.get('champion_count', 0)))
             else:
-                log.info("[ApexLol] 缓存不存在或已过期，请点击 🔄 更新数据")
+                log.info("[ApexLol] 缓存不存在或已过期，请点击 [更新数据]")
                 self.status_label.configure(text=T("status_data_missing"))
         except Exception as e:
             log.warning(f"[ApexLol] 缓存初始化失败: {e}")
@@ -769,7 +570,7 @@ class App:
 
             self.root.after(0, lambda: self.status_label.configure(
                 text=T("status_data_done")))
-            log.info("[ApexLol] ✅ 数据更新完成")
+            log.info("[ApexLol] [OK] 数据更新完成")
 
         except Exception as e:
             log.error(f"[ApexLol] 数据更新失败: {e}")
@@ -897,6 +698,8 @@ class App:
                                highlightthickness=1)
         self._overlay_visible = True
 
+        self.status_label.configure(text=T("status_done"))
+
     # ==================== 显示海克斯建议 ====================
     def _show_hextech_result(self, content: str):
         """在临时 Toplevel 窗口中显示海克斯选择建议。"""
@@ -924,8 +727,8 @@ class App:
         self.hextech_overlay.overrideredirect(True)
 
         hex_width = 420
-        screen_h = self.root.winfo_screenheight()
         x_pos = 20
+        screen_h = self.root.winfo_screenheight()
         y_pos = max(40, (screen_h - 500) // 2)
 
         # 标题栏（红色调，区别于全局面板）
@@ -1135,8 +938,6 @@ class App:
     def _keep_topmost(self):
         try:
             self.root.lift()
-            self.root.attributes("-topmost", True)
-            self.root.after(3000, self._keep_topmost)
         except Exception:
             pass
 
@@ -1150,67 +951,6 @@ class App:
         self.root.geometry(f"+{x}+{y}")
 
     # ==================== 全局热键 ====================
-    def _start_hotkey_listener(self):
-        """在后台线程中注册 Ctrl+F12 全局热键，用于恢复UI和切换攻略窗口。"""
-        def _listener():
-            try:
-                user32 = ctypes.windll.user32
-                HOTKEY_ID_TOGGLE = 1
-                MOD_CONTROL = 0x0002
-                VK_F12 = 0x7B
-
-                if not user32.RegisterHotKey(None, HOTKEY_ID_TOGGLE, MOD_CONTROL, VK_F12):
-                    log.warning("⚠️ 注册全局热键 Ctrl+F12 失败（可能已被占用）")
-                    return
-
-                log.info("✅ 全局热键 Ctrl+F12 已注册（恢复UI + 切换攻略窗口）")
-
-                msg = ctypes.wintypes.MSG()
-                while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
-                    if msg.message == 0x0312:  # WM_HOTKEY
-                        if msg.wParam == HOTKEY_ID_TOGGLE:
-                            log.debug("🔑 热键 Ctrl+F12 触发")
-                            try:
-                                self.root.after(0, self._recover_and_show)
-                            except Exception:
-                                pass
-
-                user32.UnregisterHotKey(None, HOTKEY_ID_TOGGLE)
-            except Exception as e:
-                log.error(f"热键线程异常: {e}")
-
-        t = threading.Thread(target=_listener, daemon=True, name="HotkeyListener")
-        t.start()
-
-    def _recover_and_show(self):
-        """恢复所有UI元素 + 切换攻略显示。
-
-        确保浮动按钮栏始终可见，然后切换攻略窗口。
-        """
-        try:
-            # 1. 恢复主按钮栏（即使正常状态也安全调用）
-            self.root.deiconify()
-            self.root.lift()
-            self.root.attributes("-topmost", True)
-
-            # 2. 切换攻略窗口
-            self._on_show()
-        except Exception as e:
-            log.error(f"恢复UI失败: {e}")
-
-    def _on_history(self):
-        """显示本局海克斯分析记录。"""
-        global _hextech_result_history
-        if not _hextech_result_history:
-            self.status_label.configure(text=T("status_history_empty"))
-            return
-
-        # 拼接历史记录内容
-        content = "📜 **海克斯分析历史记录 (按选择顺序)**\n\n"
-        content += "\n\n" + "=" * 30 + "\n\n"
-        content += "\n\n".join(_hextech_result_history)
-
-        self._show_global_result(content)
 
     def run(self):
         self.root.mainloop()
@@ -1225,7 +965,7 @@ def main():
     print(T("console_analyze_hint"))
     print(T("console_guide_hint"))
     print(T("console_drag_hint"))
-    print(f"\n{T('console_hotkey_hint')}")
+
     print(f"\n{T('console_restart_hint')}")
     print(T("console_hero_hint"))
     print(T("console_log").format(LOG_FILE))

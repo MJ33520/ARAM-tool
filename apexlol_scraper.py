@@ -42,6 +42,7 @@ def get_champion_list() -> list[dict]:
         log.error(f"[ApexLol] 获取英雄列表失败: {e}")
         return []
 
+    resp.encoding = "utf-8"
     soup = BeautifulSoup(resp.text, "html.parser")
     champions = []
 
@@ -106,6 +107,7 @@ def scrape_champion(champion_id: str) -> dict:
         log.warning(f"[ApexLol] 爬取 {champion_id} 失败: {e}")
         return {"id": champion_id, "synergies": []}
 
+    resp.encoding = "utf-8"
     soup = BeautifulSoup(resp.text, "html.parser")
     synergies = []
 
@@ -124,8 +126,8 @@ def scrape_champion(champion_id: str) -> dict:
         rating_el = card.select_one(".rating-badge")
         entry["rating"] = rating_el.get_text(strip=True).replace("级", "").strip() if rating_el else ""
 
-        # 提取联动标签
-        tag_el = card.select_one(".tag-synergy")
+        # 提取联动标签（支持所有类型：强力联动/陷阱/娱乐/Bug）
+        tag_el = card.select_one(".tag-badge")
         entry["tag"] = tag_el.get_text(strip=True) if tag_el else ""
 
         # 提取分析文本（核心内容）

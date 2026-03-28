@@ -16,42 +16,53 @@ log = logging.getLogger("ARAM")
 CHAMPION_ALIASES = {
     # ===== A =====
     "阿卡丽": "Akali", "阿克尚": "Akshan", "阿利斯塔": "Alistar", "阿木木": "Amumu",
-    "阿尼维亚": "Anivia", "安妮": "Annie", "阿菲利奥斯": "Aphelios", "艾瑞莉娅": "Irelia",
-    "艾希": "Ashe", "奥恩": "Ornn", "奥拉夫": "Olaf", "奥瑞利安索尔": "AurelionSol",
+    "阿尼维亚": "Anivia", "冰鸟": "Anivia", "安妮": "Annie", "火女": "Annie",
+    "阿菲利奥斯": "Aphelios", "艾瑞莉娅": "Irelia",
+    "艾希": "Ashe", "寒冰": "Ashe", "寒冰射手": "Ashe",
+    "奥恩": "Ornn", "奥拉夫": "Olaf", "奥瑞利安索尔": "AurelionSol",
     "奥莉安娜": "Orianna", "阿兹尔": "Azir", "艾克": "Ekko", "安贝萨": "Ambessa",
-    "艾翁": "Ivern", "阿狸": "Ahri", "阿卡丽": "Akali",
+    "艾翁": "Ivern", "阿狸": "Ahri", "狐狸": "Ahri",
+    "哭哭": "Amumu",
     # ===== B =====
     "巴德": "Bard", "贝尔维斯": "Belveth", "布兰德": "Brand", "布隆": "Braum",
     "布里茨": "Blitzcrank", "波比": "Poppy", "豹女": "Nidalee",
+    "盲僧": "LeeSin",
     # ===== C =====
-    "才藏": "Hwei", "铸星龙王": "AurelionSol",
+    "铸星龙王": "AurelionSol",
     # ===== D =====
-    "大嘴": "KogMaw", "大头": "Heimerdinger", "黛安娜": "Diana", "刀妹": "Irelia",
-    "德莱厄斯": "Darius", "德莱文": "Draven", "迪亚娜": "Diana",
+    "大嘴": "KogMaw", "大头": "Heimerdinger", "大树": "Maokai",
+    "刀妹": "Irelia", "德莱厄斯": "Darius", "德莱文": "Draven",
+    "迪亚娜": "Diana", "黛安娜": "Diana",
     # ===== E =====
-    "厄加特": "Urgot", "厄斐琉斯": "Aphelios", "俄洛伊": "Illaoi",
-    "恕瑞玛皇帝": "Azir",
+    "厄斐琉斯": "Aphelios", "俄洛伊": "Illaoi",
+    "厄运小姐": "MissFortune",
     # ===== F =====
-    "菲奥娜": "Fiora", "菲兹": "Fizz", "弗拉基米尔": "Vladimir", "弗雷尔卓德之心": "Braum",
-    "费德提克": "Fiddlesticks",
+    "菲奥娜": "Fiora", "菲兹": "Fizz", "费德提克": "Fiddlesticks",
+    "弗拉基米尔": "Vladimir", "弗雷尔卓德之心": "Braum",
     # ===== G =====
-    "盖伦": "Garen", "甘普朗克": "Gangplank", "格雷福斯": "Graves", "格温": "Gwen",
-    "古拉加斯": "Gragas", "光辉女郎": "Lux",
+    "甘普朗克": "Gangplank", "船长": "Gangplank", "橘子": "Gangplank",
+    "盖伦": "Garen", "格雷福斯": "Graves", "格温": "Gwen",
+    "古拉加斯": "Gragas", "纳尔": "Gnar",
+    "加里奥": "Galio",
     # ===== H =====
-    "海克斯科技枪": None, "赫卡里姆": "Hecarim", "黑默丁格": "Heimerdinger",
-    "厚嘴": "KogMaw",
-    # ===== I/J =====
-    "吉格斯": "Ziggs", "基兰": "Zilean", "贾克斯": "Jax", "嘉文四世": "JarvanIV",
-    "锦鲤": "Nami", "金克丝": "Jinx", "金克斯": "Jinx", "杰斯": "Jayce", "劫": "Zed",
-    "疾风剑豪": "Yasuo", "嘉文": "JarvanIV", "剑姬": "Fiora", "剑魔": "Aatrox",
-    "加里奥": "Galio", "佐伊": "Zoe", "橘子": "Gangplank",
+    "赫卡里姆": "Hecarim", "黑默丁格": "Heimerdinger",
+    # ===== J =====
+    "贾克斯": "Jax", "武器大师": "Jax", "武器": "Jax",
+    "嘉文四世": "JarvanIV", "嘉文": "JarvanIV", "皇子": "JarvanIV",
+    "杰斯": "Jayce", "劫": "Zed", "疾风剑豪": "Yasuo",
+    "金克丝": "Jinx", "金克斯": "Jinx",
+    "烬": "Jhin", "锦鲤": "Nami",
+    "机器人": "Blitzcrank",
+    "酒桶": "Gragas", "剑姬": "Fiora", "剑魔": "Aatrox",
     # ===== K =====
-    "卡尔玛": "Karma", "卡尔萨斯": "Karthus", "卡莉斯塔": "Kalista", "卡密尔": "Camille",
-    "卡萨丁": "Kassadin", "卡莎": "Kaisa", "卡沙": "Kaisa", "卡兹克": "Khazix", "卡特琳娜": "Katarina",
-    "卡特": "Katarina", "卡西奥佩娅": "Cassiopeia", "卡蜜尔": "Camille",
+    "卡尔玛": "Karma", "卡莎": "Kaisa", "卡萨丁": "Kassadin",
+    "卡特琳娜": "Katarina", "卡特": "Katarina", "女刀": "Katarina",
+    "卡西奥佩娅": "Cassiopeia", "蛇女": "Cassiopeia",
+    "卡蜜尔": "Camille", "青钢影": "Camille",
     "凯南": "Kennen", "凯尔": "Kayle", "凯隐": "Kayn", "凯特琳": "Caitlyn",
     "科加斯": "Chogath", "克烈": "Kled", "奎因": "Quinn", "克格莫": "KogMaw",
-    "寇格": "KogMaw", "孔": "Wukong", "凯特灵": "Caitlyn",
+    "寇格": "KogMaw", "凯特灵": "Caitlyn",
+    "卡兹克": "Khazix", "螳螂": "Khazix",
     # ===== L =====
     "拉克丝": "Lux", "拉莫斯": "Rammus", "兰博": "Rumble", "乐芙兰": "Leblanc",
     "雷克塞": "RekSai", "雷克顿": "Renekton", "雷恩加尔": "Rengar", "李青": "LeeSin",
@@ -59,15 +70,16 @@ CHAMPION_ALIASES = {
     "龙女": "Shyvana", "龙王": "AurelionSol", "洛": "Rakan", "卢锡安": "Lucian",
     "卢安": "Lucian",
     # ===== M =====
-    "玛尔扎哈": "Malzahar", "冒险家": "Ezreal", "美杜莎": "Cassiopeia",
+    "玛尔扎哈": "Malzahar", "马尔扎哈": "Malzahar",
+    "冒险家": "Ezreal", "美杜莎": "Cassiopeia",
     "梦魇": "Nocturne", "蒙多": "DrMundo", "蒙多医生": "DrMundo",
-    "魔腾": "Mordekaiser", "莫甘娜": "Morgana", "莫德凯撒": "Mordekaiser",
-    "墨菲特": "Malphite", "沐恩": "Milio", "马尔扎哈": "Malzahar", "男枪": "Graves",
-    "猫咪": "Yuumi", "木木": "Amumu",
+    "魔腾": "Nocturne", "莫甘娜": "Morgana", "莫德凯撒": "Mordekaiser", "铁铠冥魂": "Mordekaiser",
+    "墨菲特": "Malphite", "沐恩": "Milio", "微光": "Milio",
+    "男枪": "Graves", "猫咪": "Yuumi", "木木": "Amumu",
     # ===== N =====
-    "纳尔": "Gnar", "内瑟斯": "Nasus", "娜美": "Nami", "奈德丽": "Nidalee",
-    "妮蔻": "Neeko", "诺克萨斯之手": "Darius", "诺手": "Darius",
-    "努努": "Nunu", "女枪": "MissFortune", "女刀": "Katarina", "奶妈": "Soraka",
+    "内瑟斯": "Nasus", "娜美": "Nami", "奈德丽": "Nidalee",
+    "妮蔻": "Neeko", "诺克萨斯之手": "Darius", "诺手": "Darius", "小手": "Darius",
+    "努努": "Nunu", "女枪": "MissFortune", "奶妈": "Soraka",
     "鸟人": "Quinn",
     # ===== O =====
     "欧拉夫": "Olaf",
@@ -75,7 +87,7 @@ CHAMPION_ALIASES = {
     "派克": "Pyke", "潘森": "Pantheon", "泡芙": "Lulu", "皮城女警": "Caitlyn",
     "琴女": "Sona", "爬行者": "KogMaw", "螃蟹": "Urgot",
     # ===== Q =====
-    "奇亚娜": "Qiyana", "琪亚娜": "Qiyana", "千珏": "Kindred", "青钢影": "Camille",
+    "奇亚娜": "Qiyana", "琪亚娜": "Qiyana", "千珏": "Kindred",
     "球女": "Orianna", "曲奇": "Zac",
     # ===== R =====
     "瑞兹": "Ryze", "瑞文": "Riven", "锐雯": "Riven", "芮尔": "Rell",
@@ -83,51 +95,59 @@ CHAMPION_ALIASES = {
     # ===== S =====
     "赛恩": "Sion", "赛拉斯": "Sylas", "赛娜": "Senna", "塞拉芬妮": "Seraphine",
     "萨勒芬妮": "Seraphine", "塞特": "Sett", "沙漠皇帝": "Azir",
-    "厄运小姐": "MissFortune", "莎弥拉": "Samira",
+    "莎弥拉": "Samira",
     "慎": "Shen", "石头人": "Malphite", "狮子狗": "Rengar",
     "斯卡纳": "Skarner", "斯维因": "Swain", "索拉卡": "Soraka", "孙悟空": "MonkeyKing",
     "松果": "Ivern", "索恩": "Sion", "日女": "Leona", "曙光": "Leona", "死歌": "Karthus",
     "星妈": "Soraka", "瞎子": "LeeSin", "瞎": "LeeSin",
-    "蛇女": "Cassiopeia", "深海泰坦": "Nautilus",
+    "深海泰坦": "Nautilus",
     "时光老人": "Zilean", "时光": "Zilean",
-    "机器人": "Blitzcrank", "稻草人": "Fiddlesticks",
-    "酒桶": "Gragas", "皇子": "JarvanIV", "螳螂": "Khazix",
-    "薇恩": "Vayne",
+    "稻草人": "Fiddlesticks",
     # ===== T =====
     "塔里克": "Taric", "塔姆": "TahmKench", "塔莉垭": "Taliyah",
     "泰达米尔": "Tryndamere", "泰坦": "Nautilus",
     "探险家": "Ezreal", "提莫": "Teemo", "铁男": "Mordekaiser",
+    "铁铠冥魂": "Mordekaiser",
     "图奇": "Twitch", "崔斯特": "TwistedFate", "崔丝塔娜": "Tristana",
     "特朗德尔": "Trundle", "陶器": "Galio",
     # ===== V/W =====
     "薇古丝": "Vex", "薇": "Vi", "维克托": "Viktor", "维克兹": "VelKoz",
     "维嘉": "Veigar", "小法": "Veigar", "小法师": "Veigar",
     "韦鲁斯": "Varus", "蔚": "Vi", "沃里克": "Warwick",
-    "乌迪尔": "Udyr", "武器大师": "Jax",
+    "乌迪尔": "Udyr",
     "沃利贝尔": "Volibear", "狗熊": "Volibear",
-    "微光": "Milio",
+    "薇恩": "Vayne", "暗夜猎手": "Vayne",
     # ===== X =====
     "霞": "Xayah", "希尔科": "Silco", "希维尔": "Sivir", "辛吉德": "Singed",
     "辛德拉": "Syndra", "锤石": "Thresh", "希瓦娜": "Shyvana",
     "瑟庄妮": "Sejuani", "虚空之女": "Kaisa",
-    "猩红收割者": "Vladimir", "兴奋": "Jinx", "压缩": "Yasuo", "吸血鬼": "Vladimir",
-    "小鱼": "Fizz", "小法": "Veigar", "小鱼人": "Fizz", "小炮": "Tristana",
+    "猩红收割者": "Vladimir", "吸血鬼": "Vladimir",
+    "小鱼": "Fizz", "小鱼人": "Fizz", "小炮": "Tristana",
     # ===== Y =====
-    "亚索": "Yasuo", "亚托克斯": "Aatrox", "伊芙琳": "Evelynn", "伊泽瑞尔": "Ezreal",
+    "亚索": "Yasuo", "快乐风男": "Yasuo", "亚托克斯": "Aatrox",
+    "伊芙琳": "Evelynn", "寡妇": "Evelynn",
+    "伊泽瑞尔": "Ezreal",
     "易": "MasterYi", "易大师": "MasterYi", "剑圣": "MasterYi",
     "永恩": "Yone", "约里克": "Yorick", "约德尔": None, "尤米": "Yuumi",
     "悠米": "Yuumi", "瑶": "Lillia", "影流之主": "Zed",
+    "永岚": "YongLan",
     # ===== Z =====
-    "扎克": "Zac", "寨安": "Zaun", "泽拉斯": "Xerath",
-    "赵信": "XinZhao", "蜘蛛女皇": "Elise", "猪妹": "Sejuani",
-    "诸葛亮": None, "烬": "Jhin", "炸弹人": "Ziggs",
+    "扎克": "Zac", "泽拉斯": "Xerath",
+    "赵信": "XinZhao", "蜘蛛女皇": "Elise", "蜘蛛": "Elise", "猪妹": "Sejuani",
+    "炸弹人": "Ziggs",
     "祖安怒兽": "Warwick",
     "艾翠丝": "Elise", "伊莉丝": "Elise",
-    "佐拉": "Zyra", "婕拉": "Zyra",
+    "佐拉": "Zyra", "婕拉": "Zyra", "佐伊": "Zoe",
     "老鼠": "Twitch", "猴子": "MonkeyKing", "蛮王": "Tryndamere",
     "狗头": "Nasus", "牛头": "Alistar",
+    # ===== 新英雄 =====
+    "不破之誓": "Yunara", "芸阿娜": "Yunara", "云阿娜": "Yunara",
+    "极光": "Aurora", "奥罗拉": "Aurora", "欧若拉": "Aurora", "双界灵兔": "Aurora",
+    "斯莫德": "Smolder", "小龙": "Smolder",
     # ===== 英文简称 =====
     "EZ": "Ezreal", "ez": "Ezreal", "VN": "Vayne", "vn": "Vayne",
+    "TF": "TwistedFate", "tf": "TwistedFate",
+    "MF": "MissFortune", "mf": "MissFortune",
     "ADC": None,
 }
 
@@ -138,51 +158,43 @@ _name_to_id = None
 
 
 def _fix_mojibake(s: str) -> str:
-    """尝试修复双重编码的乱码字符串（如 ä¸\\x8dç¥¥ä¹\\x8bå\\x88\\x83 -> 不祥之刃）"""
+    """尝试修复双重编码的乱码字符串"""
     if not isinstance(s, str):
         return s
     try:
-        # 第一层尝试：完美转换
         return s.encode('latin1').decode('utf-8')
     except Exception:
         pass
     try:
-        # 第二层尝试：容错转换（丢弃尾部无法解析的损坏字节，保留前面的正常汉字）
         return s.encode('latin1', errors='ignore').decode('utf-8', errors='ignore')
     except Exception:
         return s
 
 
 def _build_name_map(data: dict) -> dict:
-    """从缓存数据构建 名称 -> ID 的映射表。"""
+    """从缓存数据构建 中文名/英文名 -> 英文ID 的查找字典。"""
     name_map = {}
-
-    # 从 champion_list 构建
-    for champ in data.get("champion_list", []):
-        champ_id = champ["id"]
-        cn_title = _fix_mojibake(champ.get("cn_title", ""))
-
-        # 中文标题 -> ID（如 "不祥之刃" -> "Katarina"）
-        if cn_title:
-            name_map[cn_title] = champ_id
-
-        # 英文 ID 本身（大小写不敏感）
+    champions = data.get("champions", {})
+    for champ_id, champ_data in champions.items():
+        name_map[champ_id] = champ_id
         name_map[champ_id.lower()] = champ_id
 
-    # 从 champions 数据构建
-    for champ_id, info in data.get("champions", {}).items():
-        cn_title = _fix_mojibake(info.get("cn_title", ""))
+        cn_title = champ_data.get("cn_title", "")
         if cn_title:
+            fixed_title = _fix_mojibake(cn_title)
             name_map[cn_title] = champ_id
-            
-        cn_name = _fix_mojibake(info.get("cn_name", ""))
-        if cn_name:
-            name_map[cn_name] = champ_id
+            if fixed_title != cn_title:
+                name_map[fixed_title] = champ_id
 
-    # 加入手动别名
-    for alias, cid in CHAMPION_ALIASES.items():
-        if cid:
-            name_map[alias] = cid
+        cn_name = champ_data.get("cn_name", "")
+        if cn_name:
+            fixed_name = _fix_mojibake(cn_name)
+            name_map[cn_name] = champ_id
+            if fixed_name != cn_name:
+                name_map[fixed_name] = champ_id
+            parts = fixed_name.split()
+            if len(parts) > 1:
+                name_map[parts[-1]] = champ_id
 
     return name_map
 
@@ -190,30 +202,30 @@ def _build_name_map(data: dict) -> dict:
 def load_cache(cache_dir: str) -> dict:
     """加载本地缓存数据。"""
     global _cache, _name_to_id
-
     cache_file = os.path.join(cache_dir, "apexlol_data.json")
+
     if not os.path.exists(cache_file):
-        log.warning("[ApexLol] 缓存文件不存在")
+        log.warning(f"[ApexLol] 缓存文件不存在: {cache_file}")
         return {}
 
     try:
         with open(cache_file, "r", encoding="utf-8") as f:
             _cache = json.load(f)
         _name_to_id = _build_name_map(_cache)
-        log.info(f"[ApexLol] ✅ 已加载缓存 ({len(_cache.get('champions', {}))} 英雄)")
+        champion_count = len(_cache.get("champions", {}))
+        log.info(f"[ApexLol] 缓存加载成功: {champion_count} 个英雄")
         return _cache
     except Exception as e:
-        log.error(f"[ApexLol] 加载缓存失败: {e}")
+        log.error(f"[ApexLol] 缓存加载失败: {e}")
         return {}
 
 
 def is_cache_valid(cache_dir: str, ttl_days: int = 7) -> bool:
-    """检查缓存是否有效（文件存在且未过期）。"""
+    """检查缓存是否存在且未过期。"""
     cache_file = os.path.join(cache_dir, "apexlol_data.json")
-    if not os.path.exists(cache_file):
-        return False
-
     try:
+        if not os.path.exists(cache_file):
+            return False
         mtime = os.path.getmtime(cache_file)
         age_days = (time.time() - mtime) / 86400
         return age_days < ttl_days
@@ -224,23 +236,30 @@ def is_cache_valid(cache_dir: str, ttl_days: int = 7) -> bool:
 def resolve_champion_id(name: str) -> str | None:
     """将英雄名（中文/英文/别名）解析为英文 ID。"""
     global _name_to_id
+
+    if name in CHAMPION_ALIASES:
+        cid = CHAMPION_ALIASES[name]
+        if cid:
+            log.debug(f"[ApexLol] 别名直接匹配: {name} -> {cid}")
+            return cid
+
     if _name_to_id is None:
+        log.debug(f"[ApexLol] 缓存未加载，仅使用别名表查找: {name}")
         return None
 
-    # 精确匹配
     if name in _name_to_id:
         return _name_to_id[name]
 
-    # 大小写不敏感匹配
     lower = name.lower()
     if lower in _name_to_id:
         return _name_to_id[lower]
 
-    # 模糊匹配：包含关系
     for key, cid in _name_to_id.items():
         if name in key or key in name:
+            log.debug(f"[ApexLol] 模糊匹配成功: {name} -> {cid} (匹配项: {key})")
             return cid
 
+    log.warning(f"[ApexLol] 英雄名解析失败: {name}")
     return None
 
 
@@ -265,151 +284,158 @@ def lookup_champion(name: str) -> str:
     if not champ_data or not champ_data.get("synergies"):
         return ""
 
-    cn_title = champ_data.get("cn_title", champ_id)
-    
-    # --- 提取并去重所有合法的海克斯名称，构建【官方词典】 ---
+    cn_title = _fix_mojibake(champ_data.get("cn_title", champ_id))
+
     all_valid_names = []
     for s in champ_data["synergies"]:
         for hname in s.get("hex_names", []):
-            if hname and hname not in all_valid_names:
-                all_valid_names.append(hname)
-    
+            fixed = _fix_mojibake(hname)
+            if fixed and fixed not in all_valid_names:
+                all_valid_names.append(fixed)
+
     lines = [f"【{cn_title}({champ_id}) 海克斯联动分析 - 来源: apexlol.info】"]
     if all_valid_names:
         lines.append(f"📜 [标准海克斯名单 - 严禁修改字符]: {', '.join(all_valid_names)}")
         lines.append("-" * 30)
 
     for s in champ_data["synergies"]:
-        # 使用更清晰的 | 分隔符，防止 AI 误判为一句话
-        hex_names = " | ".join(s.get("hex_names", []))
-        rating = s.get("rating", "")
-        tiers = " / ".join(s.get("hex_tiers", []))
-        tag = s.get("tag", "")
-
-        header_parts = []
-        if rating:
-            header_parts.append(f"[{rating}级]")
-        header_parts.append(hex_names)
-        if tiers:
-            header_parts.append(f"({tiers})")
-        if tag:
-            header_parts.append(f"- {tag}")
-
-        lines.append(f"\n▸ {' '.join(header_parts)}")
-        lines.append(f"  {s.get('analysis', '')}")
+        hex_names = " | ".join([_fix_mojibake(h) for h in s.get("hex_names", [])])
+        rating = _fix_mojibake(s.get("rating", ""))
+        tag = _fix_mojibake(s.get("tag", ""))
+        analysis = _fix_mojibake(s.get("analysis", ""))
+        tag_info = f" [{tag}]" if tag else ""
+        lines.append(f"  [{rating}]{tag_info} {hex_names}")
+        lines.append(f"    {analysis}")
+        lines.append("")
 
     return "\n".join(lines)
 
 
 def lookup_champions(names: list[str], highlight_mine: str = None) -> str:
-    """批量查询多个英雄的联动数据，拼接为 Gemini 可用的参考文本。
-
-    Args:
-        names: 英雄名列表
-        highlight_mine: 我的英雄名（会放在最前面并额外标注）
-
-    Returns:
-        拼接后的参考文本
-    """
+    """批量查询多个英雄的联动数据，拼接为 Gemini 可用的参考文本。"""
     sections = []
 
-    # 先处理"我的英雄"
-    if highlight_mine:
-        my_data = lookup_champion(highlight_mine)
-        if my_data:
-            sections.append(f"=== ⭐ 我的英雄 ===\n{my_data}")
+    ordered = list(names)
+    if highlight_mine and highlight_mine in ordered:
+        ordered.remove(highlight_mine)
+        ordered.insert(0, highlight_mine)
 
-    # 处理其余英雄
-    for name in names:
-        if highlight_mine and name == highlight_mine:
+    for name in ordered:
+        text = lookup_champion(name)
+        if not text:
             continue
-        data = lookup_champion(name)
-        if data:
-            sections.append(data)
+        if name == highlight_mine:
+            text = f"⭐ [你的英雄] ⭐\n{text}"
+        sections.append(text)
 
     if not sections:
         return ""
 
     header = (
-        "📚 以下是来自 apexlol.info 的海克斯联动分析数据（专业玩家社区贡献的机制级分析）。\n"
-        "请重点参考这些数据来推荐海克斯符文，特别注意隐藏的联动机制（如某技能能触发特定符文效果等）。\n"
+        "=" * 60 + "\n"
+        "📊 以下是来自 apexlol.info 的真实高分英雄联动数据（由玩家社区贡献的机制级分析）。\n"
+        "请根据以下数据推荐海克斯符文，特别注意隐藏的联动机制（如某技能能触发特定符文效果等）。\n"
         "注意：这些数据是参考建议，请结合当前阵容做出最佳判断。\n"
         "=" * 60
     )
-
     return header + "\n\n" + "\n\n".join(sections)
 
 
 # ==================== 评分排序权重 ====================
-_RATING_ORDER = {"sss": 0, "ss": 1, "s": 2, "a": 3, "b": 4, "c": 5}
+_RATING_ORDER = {"sss": 0, "ss": 1, "s": 2, "a": 3, "b": 4, "c": 5, "d": 6}
+
 
 def _parse_rating_key(rating_str: str) -> int:
     """将 'S 级'、'SS 级' 等字符串解析为排序权重（越小越强）。"""
     if not rating_str:
         return 99
-    cleaned = rating_str.strip().upper().replace("级", "").replace(" ", "")
+    cleaned = _fix_mojibake(rating_str).strip().upper().replace("级", "").replace(" ", "")
     for key, val in _RATING_ORDER.items():
         if cleaned.startswith(key.upper()):
             return val
     return 99
 
 
-def extract_top_synergies(champion_name: str, top_n: int = 3) -> str:
-    """
-    从 ApexLol 缓存中按评分排序，直接提取该英雄的前 N 组海克斯联动方案。
+def extract_top_synergies(champion_name: str, top_n: int = 8) -> str:
+    """从 ApexLol 缓存中按评分排序，直接提取该英雄的前 N 组海克斯联动方案。
     返回格式化的 Markdown 字符串，可直接作为"预填答案"嵌入 prompt。
-    
+
     这是"数据驱动"的核心函数：符文方案不靠 AI 猜，而是从真实数据中硬抽。
+    会自动将"陷阱"标签的方案分离出来，单独以警告形式展示。
     """
     global _cache
     if not _cache:
         return ""
-    
+
     champ_id = resolve_champion_id(champion_name)
     if not champ_id:
+        log.warning(f"[ApexLol] extract_top_synergies: 英雄名 {champion_name} 解析失败")
         return ""
-    
+
     champ_data = _cache.get("champions", {}).get(champ_id)
     if not champ_data or not champ_data.get("synergies"):
+        log.warning(f"[ApexLol] extract_top_synergies: {champ_id} 在缓存中无联动数据")
         return ""
-    
+
     cn_title = _fix_mojibake(champ_data.get("cn_title", champ_id))
     synergies = champ_data["synergies"]
     
-    # 按评级从高到低排序（SSS > SS > S > A > B > C > D）
-    sorted_syns = sorted(synergies, key=lambda s: _parse_rating_key(s.get("rating", "")))
+    # 分为陷阱和正常两组
+    traps = [s for s in synergies if "陷阱" in _fix_mojibake(s.get("tag", ""))]
+    normals = [s for s in synergies if "陷阱" not in _fix_mojibake(s.get("tag", ""))]
     
-    # 展示前 N 套方案，按评级高低依次排列
+    # 各自按评分排序（SSS > SS > S > A > B > C > D）
+    traps_sorted = sorted(traps, key=lambda s: _parse_rating_key(s.get("rating", "")))
+    normals_sorted = sorted(normals, key=lambda s: _parse_rating_key(s.get("rating", "")))
+    
+    # 陷阱在前，正常在后
+    sorted_syns = traps_sorted + normals_sorted
+    
     if not sorted_syns:
         return ""
     
     lines = [
-        f"### 🎲 海克斯符文推荐：{cn_title}（数据来源: apexlol.info，按胜率只截取前 {top_n} 套）",
+        f"### 🎲 海克斯符文推荐：{cn_title}（数据来源: apexlol.info）",
         ""
     ]
     
     for i, syn in enumerate(sorted_syns[:top_n]):
         hex_names = [_fix_mojibake(h) for h in syn.get("hex_names", [])]
-        rating = _fix_mojibake(syn.get("rating", "")).upper()
-        if not rating: rating = "未知"
+        raw_rating = _fix_mojibake(syn.get("rating", "")).upper()
+        # 去掉原始数据中可能自带的"级"字，避免 "S 级 级" 的重复
+        rating = raw_rating.replace("级", "").strip() if raw_rating else "未知"
         tiers = " / ".join([_fix_mojibake(t) for t in syn.get("hex_tiers", [])])
         tag = _fix_mojibake(syn.get("tag", ""))
         analysis = _fix_mojibake(syn.get("analysis", ""))
         
         hex_display = " + ".join(hex_names) if hex_names else "未知"
-        
-        # 提取推荐出装（如果有）
         rec_items = [_fix_mojibake(it) for it in syn.get("recommended_items", [])]
         
-        # 使用等级作为头衔，例如 【SSS 级方案】
-        lines.append(f"#### 🏆 【{rating} 级方案】 {f'({tiers})' if tiers else ''}")
+        # 根据标签决定图标
+        is_trap = "陷阱" in tag
+        icon = "❌" if is_trap else "🏆"
+        tag_display = "⚠️陷阱" if is_trap else tag
+        
+        lines.append(f"#### {icon} 【{rating}级方案】 {f'({tiers})' if tiers else ''}")
         lines.append(f"- **核心组合**: {hex_display}")
-        if tag:
-            lines.append(f"- **流派标签**: {tag}")
+        if tag_display:
+            lines.append(f"- **流派标签**: {tag_display}")
         if rec_items:
             lines.append(f"- **搭配出装**: {' → '.join(rec_items)}")
         if analysis:
             lines.append(f"- **机制解析**: {analysis}")
+        lines.append("")
+    
+    # 如果 top_n 之外还有陷阱未展示，也追加警告
+    remaining_traps = [s for s in traps_sorted if s not in sorted_syns[:top_n]]
+    if remaining_traps:
+        lines.append("#### ⚠️ 其他需要避开的陷阱海克斯")
+        for syn in remaining_traps:
+            hex_names = [_fix_mojibake(h) for h in syn.get("hex_names", [])]
+            analysis = _fix_mojibake(syn.get("analysis", ""))
+            hex_display = " + ".join(hex_names) if hex_names else "未知"
+            reason = analysis[:80] + "..." if len(analysis) > 80 else analysis
+            lines.append(f"- ❌ {hex_display}：{reason}")
         lines.append("")
     
     return "\n".join(lines)

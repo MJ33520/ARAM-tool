@@ -22,13 +22,13 @@ STRINGS = {
         "overlay_footer": "点击按钮重新分析 | Gemini ✨",
         # 控制台
         "console_title": "⚔️  ARAM 海克斯大乱斗 智能助手",
-        "console_btn_hint": "📌 屏幕左上角 [⚔️ 分析 | 📋 攻略] 按钮",
-        "console_analyze_hint": "   ⚔️ 分析 → 截图 + AI 分析（自动识别你的英雄）",
+        "console_btn_hint": "📌 屏幕左上角 [⚡ 海克斯 | 📋 攻略 | ✏️ 纠错 | 🔄 数据] 按钮",
+        "console_analyze_hint": "   ⚡ 海克斯 → 截图识别3选1海克斯，给出选择建议",
         "console_guide_hint": "   📋 攻略 → 重新打开/隐藏攻略",
-        "console_drag_hint": "   右键拖拽移动按钮位置",
+        "console_drag_hint": "      右键拖拽移动按钮位置",
         "console_hotkey_hint": "⌨️  全局热键: Ctrl+F12 → 切换显示/隐藏攻略（游戏中也可用）",
-        "console_restart_hint": " 无需重启！每局开始时点  分析 即可重新分析",
-        "console_hero_hint": "   AI 会通过加载界面中金色名字自动识别你的英雄",
+        "console_restart_hint": "🔄 无需重启！每局加载时自动分析阵容并生成攻略",
+        "console_hero_hint": "      AI 会通过 LCU 接口自动获取你的英雄，无需截图",
         "console_log": "📝 日志: {}",
         "console_exit": "❤️  关闭命令行窗口退出",
         "console_started": "ARAM 助手已启动",
@@ -82,10 +82,10 @@ STRINGS = {
         "console_btn_hint": "📌 Top-left corner: [⚔️ Analyze | 📋 Guide] buttons",
         "console_analyze_hint": "   ⚔️ Analyze → Screenshot + AI analysis (auto-detects your champ)",
         "console_guide_hint": "   📋 Guide → Show/hide the guide overlay",
-        "console_drag_hint": "   Right-click drag to move buttons",
+        "console_drag_hint": "      Right-click drag to move buttons",
         "console_hotkey_hint": "⌨️  Global hotkey: Ctrl+F12 → Toggle guide overlay (works in-game)",
         "console_restart_hint": "🔄 No restart needed! Click ⚔️ Analyze at the start of each game",
-        "console_hero_hint": "   AI auto-identifies your champion by the golden name on loading screen",
+        "console_hero_hint": "      AI auto-identifies your champion by the golden name on loading screen",
         "console_log": "📝 Log: {}",
         "console_exit": "❤️  Close this window to exit",
         "console_started": "ARAM Assistant started",
@@ -303,12 +303,12 @@ Each must include reasoning showing item-champion-augment-enemy synergy:
 - **Skill Order**: Max X then Y, reason
 - **Summoner Spells**: X + Y, reason (note if an augment replaces a spell slot)
 - **Core Combos**: 1-2 key combos
-- **Matchup Tips**: How to deal with each threatening enemy champion, one sentence each (e.g. "X's R has ~120s CD, look for windows after dodging")
+- **Matchup Tips**: How to deal with each threatening enemy champion, one sentence each
 
 ## 🗡️ Teammate Recommendations
 One line per teammate:
 - **Champion** | Augments: ①xx ②xx ③xx ④xx | Build: ①xx→②xx→③xx→④xx→⑤xx→⑥xx
-  - 💡 Quick tip (e.g. "follow up on my R engage" or "poke, don't go in")
+  - 💡 Quick tip
 
 ## 🎯 Team Strategy
 - **Early Lv1-6**: Playstyle and tempo
@@ -317,12 +317,12 @@ One line per teammate:
 - **⚠️ Watch Out**: Enemy's 1-2 most lethal abilities/combos
 
 Format requirements:
-1. Use **official English item names** (e.g. "Infinity Edge" not "IE", "Sunfire Aegis" not "Sunfire")
-2. Each augment build has exactly 4 augments (3 builds = 12 total), exactly 6 items (boots optional)
-3. Every recommendation MUST have reasoning showing champion-item-augment-enemy synergy! Don't just list names
-4. The 3 augment builds must be clearly differentiated (different sets/styles), not just swapping 1-2 augments
+1. Use **official English item names**
+2. Each augment build has exactly 4 augments (3 builds = 12 total), exactly 6 items
+3. Every recommendation MUST have reasoning! Don't just list names
+4. The 3 augment builds must be clearly differentiated
 
-Answer in English with clear formatting. If the screenshot is not a game loading screen or champion names are unreadable, please state so.
+Answer in English with clear formatting.
 """,
 }
 
@@ -332,9 +332,6 @@ HEXTECH_PROMPTS = {
 
 截图中有3个海克斯强化符文选项。请告诉我选哪个。
 
-当前全局攻略摘要：
-{global_context}
-
 已选海克斯：{hextech_history}
 
 ⚠️ 如果系统在最上方提供了真实的高分数据字典（apexlol.info 数据），你**绝对必须**看准这3个选项，优先推荐字典里出现过的海克斯！严禁推荐任何普通符文（如电刑、征服者等）。
@@ -343,63 +340,56 @@ HEXTECH_PROMPTS = {
 
 ## ⚡ 推荐选择
 **选项X：符文名** ← 推荐
-- 理由：一句话为什么选这个（结合我的英雄和当前局势）
+- 理由：一句话（结合数据字典中的评分和流派）
 
 ### 其他选项
 - 选项Y：符文名 — 不选原因（一句话）
 - 选项Z：符文名 — 不选原因（一句话）
 
-### 📝 后续调整
-- 选了这个后，出装或打法是否需要调整（一句话，没有就说"无需调整"）
-
-注意：极简回复，总字数控制在150字以内！直接给结论！
+注意：极简回复，总字数控制在100字以内！直接给结论！
 """,
     "en": """You are a League of Legends Hextech Havoc expert. I'm choosing a hextech augment.
 
 The screenshot shows 3 hextech augment options. Tell me which one to pick.
 
-Current global strategy summary:
-{global_context}
-
 Already chosen augments: {hextech_history}
 
-⚠️ If apexlol_context data is provided above, you MUST prioritize those exact augment names. Do NOT invent augments! Under NO circumstances are you allowed to recommend standard League of Legends runes!
+⚠️ If apexlol data is provided above, you MUST prioritize those exact augment names. Do NOT invent augments!
 
 Reply in this format (be brief!):
 
 ## ⚡ Recommended
 **Option X: Augment Name** ← Pick this
-- Reason: one sentence why (consider my champion and matchup)
+- Reason: one sentence why
 
 ### Other Options
 - Option Y: Name — why not (one sentence)
 - Option Z: Name — why not (one sentence)
 
-### 📝 Adjustments
-- After picking this, any build/playstyle changes? (one sentence, or "No changes needed")
-
-Note: Keep it extremely brief, under 100 words total! Give conclusions directly!
+Note: Under 80 words total! Give conclusions directly!
 """,
 }
 
 # ==================== 全局策略更新 Prompt ====================
 STRATEGY_UPDATE_PROMPTS = {
-    "zh": """基于以下全局攻略和新选择的海克斯符文，更新攻略。
+    "zh": """你是海克斯大乱斗攻略更新助手。根据玩家最新选择的海克斯符文，输出一段**简短的更新补充**（不超过 200 字），而非完整攻略。
 
-当前攻略：
+当前攻略（仅供参考，不要重复输出）：
 {current_strategy}
 
 已选海克斯历史：{hextech_history}
 最新选择：{latest_hextech}
 
-请重新输出完整的更新后攻略，格式与原攻略相同。重点调整：
-1. 出装顺序是否因新符文而改变
-2. 打法策略是否需要微调
-3. 后续符文选择方向是否需要调整
+【你的任务】
+只输出以下格式的**更新章节**，不要重复原攻略内容：
 
-保持简洁，格式与原攻略一致。
+### 📊 Lv{latest_hextech}后攻略更新
+- **已选海克斯评价**: 这个符文选得好/一般，原因是…
+- **出装调整**: 是否需要因为新符文而调整出装顺序
+- **下一个海克斯方向**: 接下来应该优先选什么类型的符文
+- **打法微调**: 一句话说明打法变化（如有）
 """,
-    "en": """Update the strategy based on the current guide and newly chosen hextech augment.
+    "en": """Update the strategy based on the newly chosen hextech augment.
 
 Current strategy:
 {current_strategy}
@@ -407,14 +397,81 @@ Current strategy:
 Chosen augments so far: {hextech_history}
 Latest pick: {latest_hextech}
 
-Output the full updated strategy in the same format. Focus on:
+Output a brief update section only. Focus on:
 1. Build order changes due to new augment
 2. Playstyle adjustments needed
 3. Future augment direction changes
-
-Keep it concise, same format as the original strategy.
 """,
 }
+
+# ==================== 极速前瞻攻略 Prompt ====================
+QUICK_GUIDE_PROMPTS = {
+    "zh": """你是一位英雄联盟 **海克斯大乱斗（ARAM）** 模式的资深攻略分析师。
+⚠️ 重要：这是 **大乱斗模式**，只有一条路（嚎哭深渊），**没有野区、没有打野、没有对线分路、没有回城购物（只能死后购物）**！所有建议必须100%针对大乱斗！
+
+这是关于英雄【{champion_name}】的极速前瞻攻略。
+
+### 🎲 海克斯符文流派（以供参考）
+{prefilled_augments}
+*(如果上方显示"无数据"，你也不需要推荐海克斯，只需提供出装和打法即可)*
+
+【你的任务】
+直接输出以下模块，不要输出任何寒暄，**绝对不要输出海克斯符文推荐**：
+
+### 🛒🛡️ 按海克斯方案分别给出装（仅前3套非陷阱方案）
+查看上方海克斯数据中排名前3的非陷阱方案：
+- 如果已给出"搭配出装"，以它为基础**补齐到完整6件终局出装**
+- 如果没给出装数据，你来结合该符文组合特性**生成完整出装**
+- 排名第4及以后的不需要补充出装
+
+#### 🥇 方案1（写出海克斯组合名）
+- **完整出装**: ①→②→③→④→⑤→⑥
+- 💡 出装思路（一句话）
+
+#### 🥈 方案2（写出海克斯组合名）
+- **完整出装**: ①→②→③→④→⑤→⑥
+- 💡 出装思路（一句话）
+
+#### 🥉 方案3（写出海克斯组合名）
+- **完整出装**: ①→②→③→④→⑤→⑥
+- 💡 出装思路（一句话）
+
+### ⚡ 技能加点与召唤师技能
+- **加点建议**: 主X副Y，简解原因。
+- **召唤师技能**: 推荐 2 个最适合**大乱斗**的技能，简说理由。
+
+### 💡 大乱斗核心打法
+一句话总结该英雄在大乱斗中的定位和关键操作。
+""",
+    "en": """You are a League of Legends Hextech Havoc expert analyst.
+Quick preview for champion: [{champion_name}].
+
+[Context]
+{prefilled_augments}
+
+[Your Task]
+Do NOT output hextech augments. For top 3 non-trap combos, provide full 6-item builds:
+
+#### 🥇 Build 1 (combo name)
+- **Full build**: ①→②→③→④→⑤→⑥
+
+#### 🥈 Build 2 (combo name)
+- **Full build**: ①→②→③→④→⑤→⑥
+
+#### 🥉 Build 3 (combo name)
+- **Full build**: ①→②→③→④→⑤→⑥
+
+### ⚡ Skills & Summoner Spells
+- **Skill Priority**: Max X then Y, why.
+- **Summoner Spells**: 2 optimal for ARAM.
+
+### 💡 Playstyle Summary
+(One sentence)
+""",
+}
+
+
+
 
 # ==================== 极速前瞻攻略 Prompt ====================
 QUICK_GUIDE_PROMPTS = {
@@ -483,8 +540,16 @@ LCU_FULL_STRATEGY_PROMPTS = {
 【你的任务】
 直接输出以下模块，不要输出任何寒暄：
 
+### 🧠 阵容针对性解析
+1. **敌方阵容画像**: 一句话概括敌方阵容特点（前排多/脆皮多/AP为主/AD为主/控制链强等）
+2. **符文方案重排序**: 根据本局敌方阵容，将上方 ApexLol 的海克斯方案按**本局适配度**重新排序（最适合本局的排第一），并用一句话说明为什么这套方案最克制当前敌方阵容
+3. **出装调整方向**: 基于选定的最优符文流派，出装思路需要做哪些针对性调整（例如：敌方3坦→加破甲，敌方高爆发→补护盾/生命）
+
+### 🛒 出门装建议
+根据上方阵容分析结果，推荐开局第一次购买的 2-3 件装备（总金额不超过 3400 金币），注明出装理由。
+
 ### 🛡️ 大乱斗核心出装（6件）
-严格结合双方阵容与上方符文流派进行适配！注意大乱斗没有回城，需要考虑续航。
+严格按照上方阵容分析和符文流派给出针对性出装！注意大乱斗没有回城，需要考虑续航。
 1. **装备完整名** — 针对敌方阵容/搭配符文的出装理由
 ...
 6. **装备完整名** — 终局神器
