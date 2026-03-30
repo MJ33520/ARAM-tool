@@ -263,14 +263,20 @@ def analyze_hextech_text(ocr_names: list[str], hextech_history: list[str],
                 pass
 
         api_contents = [
-            f"当前海克斯3选1的选项是：【{options_text}】\n\n"
-            f"请根据以下数据，告诉我应该选哪个。\n\n"
+            f"当前海克斯的可用选项**仅有以下几个**：【{options_text}】\n\n"
         ]
         if effect_lines:
             api_contents.append("📋【各选项的真实游戏效果】（以下是官方描述，请严格基于此判断）\n"
                                 + "\n".join(effect_lines) + "\n")
         if prefilled_augments:
-            api_contents.append(f"🚀【该英雄的海克斯联动数据】\n{prefilled_augments}\n")
+            api_contents.append(
+                f"🚀【高胜率对照表】该英雄的强势海克斯如下：\n{prefilled_augments}\n\n"
+                f"🛑【绝对核心指令 / 严禁幻觉】：\n"
+                f"你**必须、绝对只能**从上面的【{options_text}】中进行选择！\n"
+                f"如果对照表里的海克斯没有出现在上面的选项列表中，你**绝对不可推荐**！\n"
+                f"即使上方只列出了2个或1个选项（可能是读取遗漏），你也**必须只在这几个可见选项里挑一个最好的**！\n"
+                f"如果违背此项，自己脑补列表中不存在的选项，将导致严重错误！\n"
+            )
         api_contents.append(prompt)
 
         response = _call_with_retry(

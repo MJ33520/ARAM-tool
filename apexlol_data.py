@@ -604,7 +604,8 @@ def ocr_hextech_names(image_path: str, champion_name: str = None) -> list[str] |
     # 匹配海克斯名
     matched = []
     for bbox, text, confidence in result:
-        if confidence < 0.7 or len(text) > 8:
+        # 调低信任度阈值，因为海克斯卡片经常带发光特效导致置信度偏低（之前0.7太严格导致漏读选项）
+        if confidence < 0.4 or len(text) > 8:
             continue
         name = _fuzzy_match_augment(text, all_augment_names)
         if name and name not in matched:
