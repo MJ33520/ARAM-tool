@@ -202,8 +202,15 @@ def analyze_hextech_choice(png_bytes: bytes, global_context: str,
         
         api_contents = [types.Part.from_bytes(data=png_bytes, mime_type="image/jpeg")]
         if prefilled_augments:
-            # 物理注入对照表
-            api_contents.append(f"🚀【实时建议背景】该英雄的高胜率海克斯名单如下：\n{prefilled_augments}\n\n⚠️ 如果截图中的 3 个选项有命中以上名单的，请给予最高优先级的推荐权重！")
+            # 物理注入对照表，并且严格防止AI因为对照表开始“脑补”根本不在截图里的海克斯
+            api_contents.append(
+                f"🚀【高胜率对照表】该英雄的强势海克斯如下：\n{prefilled_augments}\n\n"
+                f"🛑【绝对核心指令 / 严禁幻觉】：\n"
+                f"你**必须、绝对只能**从上方截图里**真实显示出来的 3 个选项**中进行三选一！\n"
+                f"即使对照表里有再好的海克斯（比如'速度恶魔'等），只要**截图中没有出现**，你**绝对不可推荐**！\n"
+                f"你的任务是：观察截图中的选项 -> 与对照表对比 -> 在**真正可用**的选项里挑一个最好的。\n"
+                f"如果违背此项，胡乱推荐截图外的内容，将导致严重错误！"
+            )
         api_contents.append(prompt)
 
         response = _call_with_retry(

@@ -549,9 +549,9 @@ def _fuzzy_match_augment(ocr_text: str, valid_names: list[str]) -> str | None:
             best_score = r
             best_match = name
             
-    # 阈值：极短词需要几乎全对，长词可以容忍部分错误
-    threshold = 0.8 if len(ocr_text) <= 3 else 0.65
-    if best_score > threshold:
+    # 阈值：极短词需要几乎全对，长词可以容忍较多错误（应对复杂背景下的严重乱码，如"珠元护子"）
+    threshold = 0.8 if len(ocr_text) <= 3 else 0.45
+    if best_score >= threshold:
         return best_match
         
     return None
