@@ -27,35 +27,16 @@ echo [INFO] Initializing uv environment...
 uv venv --python 3.12
 uv init
 uv add -r requirements.txt
-goto :CHECK_KEY
+goto :RUN_APP
 
 :ENV_EXISTS
 echo [INFO] uv environment already initialized.
-goto :CHECK_KEY
-
-:CHECK_KEY
-:: 3. Check API Key
-if not "%GEMINI_API_KEY%"=="" goto :RUN_APP
-
-:NO_KEY
-echo.
-echo [ERROR] 请先设置 GEMINI_API_KEY 环境变量！
-echo.
-echo    当前系统未检测到 GEMINI_API_KEY 环境变量。
-echo.
-echo    临时设置方法（当前窗口有效）:
-echo    set GEMINI_API_KEY=你的密钥
-echo.
-echo    永久设置方法:
-echo    setx GEMINI_API_KEY "你的密钥"
-echo.
-echo    获取密钥: https://aistudio.google.com/apikey
-echo.
-pause
-exit /b 1
+goto :RUN_APP
 
 :RUN_APP
-:: 4. Run the application
+:: 3. Run the application
+:: LLM 配置检查由 config.py 在启动时自行输出。未配置时程序仍会启动；
+:: 可在 UI 浮动按钮栏点 ⚙️ 填写密钥，或参考 CUSTOM_LLM_SETUP.md。
 echo [INFO] Starting the application...
 uv run main.py
 
