@@ -1,81 +1,37 @@
 # -*- coding: utf-8 -*-
-"""ARAM 助手 - Gemini API 分析模块
+"""ARAM 助手 - 分析模块（原 Gemini 专用，现走统一 LLMClient）
 
-分析模式：
-1. 全局分析：加载界面截图 → 完整攻略（单次API调用，ApexLol数据直接注入）
+三种分析模式：
+1. 全局分析：加载界面截图 → 完整攻略
 2. 海克斯选择：海克斯界面截图 → 快速选择建议
 3. 全局更新：根据已选海克斯更新全局攻略
+
+历史兼容：文件名保留 gemini_analyzer，供 main.py 以原路径 import。
+底层通过 llm_client.LLMClient 支持 Gemini / OpenAI / 自定义三种后端。
 """
 
-import json
 import logging
 import time as _time
-import ssl
-import concurrent.futures
-from google import genai
-from google.genai import types
+
 from config import (
-    GEMINI_API_KEY, GEMINI_MODEL, ANALYSIS_PROMPT,
-    APEXLOL_ENABLED, APEXLOL_CACHE_DIR, LANGUAGE,
+    APEXLOL_ENABLED, LANGUAGE,
 )
+from llm_client import get_client
 
 log = logging.getLogger("ARAM")
 
-# 初始化客户端
-client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ==================== SSL EOF / 超时 自动重试 ====================
-MAX_RETRIES = 2       # 最多重试2次（共3次尝试）
-RETRY_DELAY = 1.0     # 重试前等待秒数
-
-
-def _is_retryable(exc: Exception) -> bool:
-    """判断是否为可重试的瞬态错误（SSL EOF / 超时）。"""
-    msg = str(exc).lower()
-    return ("unexpected_eof" in msg or "ssleoferror" in msg 
-            or "eof occurred" in msg or isinstance(exc, concurrent.futures.TimeoutError))
-
-
-def _call_with_retry(*, model, contents, config, label="API", hard_timeout: float = None, max_retries: int = MAX_RETRIES):
-    """带自动重试的 Gemini API 调用封装。
-    
-    支持两种重试触发：
-    1. SSL EOF 等瞬态网络错误
-    2. hard_timeout 硬超时（秒）— 超时则中断当前请求并重试
-    """
-    last_exc = None
-    for attempt in range(1 + max_retries):
-        try:
-            if hard_timeout:
-                # 用线程池实现硬超时
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(
-                        client.models.generate_content,
-                        model=model, contents=contents, config=config,
-                    )
-                    return future.result(timeout=hard_timeout)
-            else:
-                return client.models.generate_content(
-                    model=model, contents=contents, config=config,
-                )
-        except Exception as e:
-            if _is_retryable(e) and attempt < max_retries:
-                last_exc = e
-                reason = "超时" if isinstance(e, (concurrent.futures.TimeoutError, TimeoutError)) else "SSL EOF"
-                log.warning(f"[{label}] {reason} ({attempt+1}/{max_retries})，{RETRY_DELAY}s 后重试...")
-                _time.sleep(RETRY_DELAY)
-            else:
-                raise
-    raise last_exc  # 不应到达，保险兜底
-
+def _llm():
+    """懒加载 LLM 客户端；LLM 未配置时抛异常，由调用方捕获并返回降级结果。"""
+    return get_client()
 
 
 def analyze_champion_quick_guide(champion_name: str) -> str:
-    """开局前极速前瞻分析：终端输英雄名 → 数据驱动的海克斯+AI出装（纯文本，无需截图）。"""
+    """开局前极速前瞻分析：输入英雄名 → 数据驱动的海克斯+AI出装（纯文本，无需截图）。"""
     try:
         from lang import QUICK_GUIDE_PROMPTS
-        log.info(f"[Gemini] 极速前瞻分析 ({champion_name})...")
-        
+        log.info(f"[LLM] 极速前瞻分析 ({champion_name})...")
+
         # ====== 数据驱动：直接从 ApexLol 硬抽符文方案 ======
         prefilled_augments = ""
         if APEXLOL_ENABLED:
@@ -83,48 +39,44 @@ def analyze_champion_quick_guide(champion_name: str) -> str:
             prefilled_augments = extract_top_synergies(champion_name)
             if prefilled_augments:
                 log.info(f"[ApexLol] 已从数据库直接提取符文方案 ({len(prefilled_augments)} 字符)")
-        
+
         prompt = QUICK_GUIDE_PROMPTS.get(LANGUAGE, QUICK_GUIDE_PROMPTS["zh"]).format(
             champion_name=champion_name,
             prefilled_augments=prefilled_augments if prefilled_augments else "（无数据，请根据英雄特性自行推荐3套海克斯符文方案）"
         )
 
-        import time
-        t_start = time.time()
-        response = _call_with_retry(
-            model=GEMINI_MODEL,
+        t_start = _time.time()
+        response_text = _llm().generate(
             contents=[prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.3,
-            ),
+            temperature=0.3,
             label="极速前瞻",
         )
-        log.info(f"[Gemini] 极速前瞻分析完成 ({time.time()-t_start:.1f}s)")
-        
+        log.info(f"[LLM] 极速前瞻分析完成 ({_time.time()-t_start:.1f}s)")
+
         # 100% 防御幻觉：由代码直接拼接，绝不指望 AI "原样复述"
         final_output = ""
         if prefilled_augments:
             final_output += prefilled_augments + "\n\n---\n\n"
-        final_output += response.text
-        
+        final_output += response_text
+
         return final_output
 
     except Exception as e:
         import traceback
         trace = traceback.format_exc()
-        error_msg = f"❌ 极速前瞻失败: {str(e)}\n\n{trace}"
+        error_msg = f"\u274c 极速前瞻失败: {str(e)}\n\n{trace}"
         log.error(error_msg)
         return error_msg
 
 
-def analyze_lcu_rosters(rosters: dict, hextech_history: list[str] = None) -> str:
+def analyze_lcu_rosters(rosters: dict, hextech_history: list = None) -> str:
     """跳过截图，完全基于 LCU 获取的 10 人阵容进行极速全局全量分析。"""
     try:
         from lang import LCU_FULL_STRATEGY_PROMPTS
-        
+
         my_champion = rosters.get("my_champion", "未知英雄")
         lcu_rosters = rosters.get("live_context", "")
-        
+
         # ====== 数据驱动：直接从 ApexLol 硬抽该英雄的核心符文方案 ======
         prefilled_augments = ""
         if APEXLOL_ENABLED:
@@ -132,107 +84,94 @@ def analyze_lcu_rosters(rosters: dict, hextech_history: list[str] = None) -> str
             prefilled_augments = extract_top_synergies(my_champion)
             if prefilled_augments:
                 log.info(f"[ApexLol] LCU分析已附加 {my_champion} 的海克斯数据 ({len(prefilled_augments)} 字符)")
-                
-        log.info(f"[Gemini] 纯数据级全局分析 ({my_champion})...")
+
+        log.info(f"[LLM] 纯数据级全局分析 ({my_champion})...")
         prompt = LCU_FULL_STRATEGY_PROMPTS.get(LANGUAGE, LCU_FULL_STRATEGY_PROMPTS["zh"]).format(
             my_champion=my_champion,
             lcu_rosters=lcu_rosters,
             prefilled_augments=prefilled_augments if prefilled_augments else "（无数据，请基于知识推荐3套最强海克斯符文方案）"
         )
-        
+
         # 注入海克斯历史
         if hextech_history:
             history_str = "、".join(hextech_history)
-            prompt = f"📜【本局已选海克斯符文历史】: {history_str}\n" + prompt
-            log.info(f"[Gemini] 已注入海克斯历史 ({len(hextech_history)}个)")
+            prompt = f"\U0001f4dc【本局已选海克斯符文历史】: {history_str}\n" + prompt
+            log.info(f"[LLM] 已注入海克斯历史 ({len(hextech_history)}个)")
 
-
-        import time
-        t_start = time.time()
-        # 纯文本请求
-        response = _call_with_retry(
-            model=GEMINI_MODEL,
+        t_start = _time.time()
+        response_text = _llm().generate(
             contents=[prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.4, # 兼顾稳定与战术变化
-            ),
+            temperature=0.4,  # 兼顾稳定与战术变化
             label="纯文本全量分析",
         )
-        log.info(f"[Gemini] 纯数据全量分析完成 ({time.time()-t_start:.1f}s)")
-        
-        # 与极速前瞻一样，强制将 Apexlol 数据拼在最前面
+        log.info(f"[LLM] 纯数据全量分析完成 ({_time.time()-t_start:.1f}s)")
+
         final_output = ""
         if prefilled_augments:
             final_output += prefilled_augments + "\n\n---\n\n"
-        final_output += response.text
-        
+        final_output += response_text
+
         return final_output
 
     except Exception as e:
-        error_msg = f"❌ LCU 全量分析失败: {str(e)}"
+        error_msg = f"\u274c LCU 全量分析失败: {str(e)}"
         log.error(error_msg)
         return error_msg
 
 
-
-
-
 def analyze_hextech_choice(png_bytes: bytes, global_context: str,
-                           hextech_history: list[str], champion_name: str = None) -> str:
+                           hextech_history: list, champion_name: str = None) -> str:
     """海克斯选择分析：截图中的3个选项 → 推荐选哪个。"""
     try:
         from lang import HEXTECH_IMAGE_PROMPTS
-        log.info(f"[Gemini] 海克斯选择分析 (英雄: {champion_name})...")
-        
+        log.info(f"[LLM] 海克斯选择分析 (英雄: {champion_name})...")
+
         history_str = "、".join(hextech_history) if hextech_history else "无"
-        
-        # 注入该英雄的高胜率符文列表辅助 AI 识别 (2026-03-14 优化)
+
+        # 注入该英雄的高胜率符文列表辅助 AI 识别
         prefilled_augments = ""
         if champion_name and APEXLOL_ENABLED:
             from apexlol_data import extract_top_synergies
             prefilled_augments = extract_top_synergies(champion_name)
             if prefilled_augments:
-                log.info(f'[海克斯] 为 {champion_name} 注入高胜率"对照表"，增强识别能力')
+                log.info(f'[海克斯] 为 {champion_name} 注入高胜率"对照表"')
 
         prompt = HEXTECH_IMAGE_PROMPTS.get(LANGUAGE, HEXTECH_IMAGE_PROMPTS["zh"]).format(
             hextech_history=history_str,
         )
-        
-        # 极速模式：只靠截图+对照表+历史，不注入全局攻略摘要
-        
-        api_contents = [types.Part.from_bytes(data=png_bytes, mime_type="image/jpeg")]
+
+        # contents 顺序：图片 -> 对照表/防幻觉指令 -> prompt
+        contents = [(png_bytes, "image/jpeg")]
         if prefilled_augments:
-            # 物理注入对照表，并且严格防止AI因为对照表开始“脑补”根本不在截图里的海克斯
-            api_contents.append(
-                f"🚀【高胜率对照表】该英雄的强势海克斯如下：\n{prefilled_augments}\n\n"
-                f"🛑【绝对核心指令 / 严禁幻觉】：\n"
+            contents.append(
+                f"\U0001f680【高胜率对照表】该英雄的强势海克斯如下：\n{prefilled_augments}\n\n"
+                f"\U0001f6d1【绝对核心指令 / 严禁幻觉】：\n"
                 f"你**必须、绝对只能**从上方截图里**真实显示出来的 3 个选项**中进行三选一！\n"
                 f"即使对照表里有再好的海克斯（比如'速度恶魔'等），只要**截图中没有出现**，你**绝对不可推荐**！\n"
                 f"你的任务是：观察截图中的选项 -> 与对照表对比 -> 在**真正可用**的选项里挑一个最好的。\n"
                 f"如果违背此项，胡乱推荐截图外的内容，将导致严重错误！"
             )
-        api_contents.append(prompt)
+        contents.append(prompt)
 
-        response = _call_with_retry(
-            model=GEMINI_MODEL,
-            contents=api_contents,
-            config=types.GenerateContentConfig(temperature=0.2),
+        response_text = _llm().generate(
+            contents=contents,
+            temperature=0.2,
             label="海克斯",
             hard_timeout=8.0,  # 8秒硬超时
             max_retries=1,     # 防止卡死停摆，只重试一次
         )
-        log.info("[Gemini] 海克斯选择分析完成")
-        return response.text
+        log.info("[LLM] 海克斯选择分析完成")
+        return response_text
     except Exception as e:
-        return f"❌ 海克斯分析失败: {str(e)}"
+        return f"\u274c 海克斯分析失败: {str(e)}"
 
 
-def analyze_hextech_text(ocr_names: list[str], hextech_history: list[str],
+def analyze_hextech_text(ocr_names: list, hextech_history: list,
                          champion_name: str = None) -> str:
     """纯文字海克斯分析：OCR 识别出的符文名 + ApexLol 数据 → AI 给建议（无截图，极速）。"""
     try:
         from lang import HEXTECH_TEXT_PROMPTS
-        log.info(f"[Gemini] 纯文字海克斯分析 (英雄: {champion_name}, 选项: {ocr_names})...")
+        log.info(f"[LLM] 纯文字海克斯分析 (英雄: {champion_name}, 选项: {ocr_names})...")
 
         history_str = "、".join(hextech_history) if hextech_history else "无"
 
@@ -262,35 +201,30 @@ def analyze_hextech_text(ocr_names: list[str], hextech_history: list[str],
             except Exception:
                 pass
 
-        api_contents = []
+        contents = []
         if effect_lines:
-            api_contents.append("📋【各候选选项的真实游戏机制/效果】（供参考参考）\n"
-                                + "\n".join(effect_lines) + "\n")
+            contents.append("\U0001f4cb【各候选选项的真实游戏机制/效果】（供参考）\n"
+                            + "\n".join(effect_lines) + "\n")
         if prefilled_augments:
-            api_contents.append(
-                f"🚀【高胜率对照表】该英雄的强势海克斯如下：\n{prefilled_augments}\n\n"
+            contents.append(
+                f"\U0001f680【高胜率对照表】该英雄的强势海克斯如下：\n{prefilled_augments}\n\n"
             )
-        api_contents.append(prompt)
+        contents.append(prompt)
 
-        response = _call_with_retry(
-            model=GEMINI_MODEL,
-            contents=api_contents,
-            config=types.GenerateContentConfig(temperature=0.2),
+        response_text = _llm().generate(
+            contents=contents,
+            temperature=0.2,
             label="海克斯文字",
-            hard_timeout=5.0,  # 文字生成应该很快，防止卡死
+            hard_timeout=5.0,
             max_retries=1,
         )
-        log.info("[Gemini] 纯文字海克斯分析完成")
-        return response.text
+        log.info("[LLM] 纯文字海克斯分析完成")
+        return response_text
     except Exception as e:
-        return f"❌ 海克斯分析失败: {str(e)}"
-
-
-
+        return f"\u274c 海克斯分析失败: {str(e)}"
 
 
 if __name__ == "__main__":
-    # 测试：用截图目录中最新的截图进行分析
     import os
     from config import SCREENSHOT_DIR
 
@@ -304,8 +238,8 @@ if __name__ == "__main__":
         print(f"使用截图: {latest}")
         with open(latest, "rb") as f:
             data = f.read()
-        result = analyze_screenshot(data)
+        result = analyze_hextech_choice(data, "", [])
         print("\n" + "=" * 60)
         print(result)
     else:
-        print("截图目录为空，请先运行 screenshot.py 获取截图")
+        print("screenshots/ 目录下没有测试截图")
