@@ -4,22 +4,9 @@ title ARAM 海克斯大乱斗智能助手
 
 cd /d "%~dp0"
 
-:: 检查 API Key
-if "%GEMINI_API_KEY%"=="" (
-    echo.
-    echo ❌ 请先设置 GEMINI_API_KEY 环境变量！
-    echo.
-    echo    方法1 - 临时设置（当前窗口有效）:
-    echo    set GEMINI_API_KEY=你的密钥
-    echo.
-    echo    方法2 - 永久设置:
-    echo    setx GEMINI_API_KEY "你的密钥"
-    echo.
-    echo    获取密钥: https://aistudio.google.com/apikey
-    echo.
-    pause
-    exit /b 1
-)
+:: LLM 配置检查由 config.py 在启动时自行输出。
+:: 若未配置任何 provider，程序仍会启动；可在浮动按钮栏点 ⚙️ 填写密钥，
+:: 或参考 CUSTOM_LLM_SETUP.md 通过环境变量 / settings.json 配置。
 
 python main.py
 pause

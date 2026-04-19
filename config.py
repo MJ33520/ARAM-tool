@@ -1,33 +1,110 @@
 # -*- coding: utf-8 -*-
-"""ARAM 助手 - 配置文件"""
+"""ARAM 助手 - 配置文件
 
+支持三种 LLM 提供商，通过 LLM_PROVIDER 切换：
+- gemini: 官方 Google Gemini（默认，需 GEMINI_API_KEY）
+- openai: OpenAI 兼容 API（OpenAI 官方 / Azure / 自建 OpenAI 协议服务）
+- custom: 自定义后端
+
+配置优先级：环境变量 > 用户设置文件 > 代码默认值
+用户设置文件：~/.aram_tool/settings.json（可由 ⚙️ 设置界面写入）
+"""
+
+import json
 import os
 import sys
 
+# ==================== 用户设置文件 ====================
+USER_SETTINGS_DIR = os.path.join(os.path.expanduser("~"), ".aram_tool")
+USER_SETTINGS_PATH = os.path.join(USER_SETTINGS_DIR, "settings.json")
+
+
+def _load_user_settings() -> dict:
+    if not os.path.exists(USER_SETTINGS_PATH):
+        return {}
+    try:
+        with open(USER_SETTINGS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+_USER = _load_user_settings()
+
+
+def _clean(v: str) -> str:
+    """清除不可见字符 (BOM, 零宽字符, 各种引号和空白符)。"""
+    return (v or "").strip(' \t\n\r"\'\u201c\u201d\ufeff\u200b')
+
+
+def _pick(env_key: str, settings_key: str, default: str = "") -> str:
+    """按 env > settings > default 优先级读取配置值（自动去不可见字符）。"""
+    v = os.environ.get(env_key)
+    if v:
+        return _clean(v)
+    sv = _USER.get(settings_key)
+    if sv:
+        return _clean(str(sv))
+    return default
+
+
 # ==================== 语言配置 ====================
-# "zh" = 中文 (Chinese)
-# "en" = English
-LANGUAGE = "zh"
+# "zh" = 中文 (Chinese)  "en" = English
+LANGUAGE = _pick("LANGUAGE", "language", "zh").lower() or "zh"
 
-# ==================== Gemini API 配置 ====================
-# 从环境变量读取 API Key（必须设置）
-# 从环境变量读取 API Key（必须设置）
-raw_key = os.environ.get("GEMINI_API_KEY", "")
-# 极限清除不可见字符 (BOM, 零宽字符, 各种引号和空白符)
-GEMINI_API_KEY = raw_key.strip(' \t\n\r"\'“”\ufeff\u200b')
+# ==================== LLM 提供商选择 ====================
+# 可选：gemini | openai | custom
+LLM_PROVIDER = _pick("LLM_PROVIDER", "llm_provider", "gemini").lower() or "gemini"
 
-if not GEMINI_API_KEY or not GEMINI_API_KEY.startswith("AIza"):
-    from lang import STRINGS
-    s = STRINGS.get(LANGUAGE, STRINGS["zh"])
+# ==================== Gemini 配置 ====================
+GEMINI_API_KEY = _pick("GEMINI_API_KEY", "gemini_api_key", "")
+GEMINI_MODEL = _pick("GEMINI_MODEL", "gemini_model", "gemini-3.1-flash-lite-preview")
+# 可选代理端点（为空则用官方 SDK 默认）
+GEN_AI_ENDPOINT = _pick("GEN_AI_ENDPOINT", "gen_ai_endpoint", "")
+
+# ==================== OpenAI 兼容配置 ====================
+OPENAI_API_KEY = _pick("OPENAI_API_KEY", "openai_api_key", "")
+OPENAI_MODEL = _pick("OPENAI_MODEL", "openai_model", "gpt-3.5-turbo")
+OPENAI_API_ENDPOINT = _pick("OPENAI_API_ENDPOINT", "openai_api_endpoint", "https://api.openai.com/v1").rstrip("/")
+
+# ==================== 自定义后端配置 ====================
+CUSTOM_API_KEY = _pick("CUSTOM_API_KEY", "custom_api_key", "")
+CUSTOM_MODEL = _pick("CUSTOM_MODEL", "custom_model", "")
+CUSTOM_API_ENDPOINT = _pick("CUSTOM_API_ENDPOINT", "custom_api_endpoint", "").rstrip("/")
+
+
+# ==================== 配置校验 ====================
+def _check_llm_config():
+    """返回 (enabled, reason)。enabled=False 时 reason 说明缺什么。"""
+    if LLM_PROVIDER == "gemini":
+        if not GEMINI_API_KEY:
+            return False, "GEMINI_API_KEY 未设置"
+        if not GEMINI_API_KEY.startswith("AIza"):
+            return False, "GEMINI_API_KEY 格式看起来不对（应以 AIza 开头）"
+        return True, None
+    if LLM_PROVIDER == "openai":
+        if not OPENAI_API_KEY:
+            return False, "OPENAI_API_KEY 未设置"
+        if not OPENAI_API_ENDPOINT:
+            return False, "OPENAI_API_ENDPOINT 未设置"
+        return True, None
+    if LLM_PROVIDER == "custom":
+        if not CUSTOM_API_ENDPOINT:
+            return False, "CUSTOM_API_ENDPOINT 未设置"
+        return True, None
+    return False, f"未知 LLM_PROVIDER: {LLM_PROVIDER}"
+
+
+_llm_ok, _llm_reason = _check_llm_config()
+LLM_ENABLED = _llm_ok
+
+if not LLM_ENABLED:
     print("\n" + "=" * 50)
-    print("⚠️  未检测到有效的 Gemini API Key，AI 攻略功能不可用")
-    print("   仍可使用：🔄 数据爬取 + ✏️ 纯数据查表模式")
-    print(f"   配置方法: {s['api_key_method']}")
-    print(f"   获取密钥: {s['api_key_url']}")
+    print(f"\u26a0\ufe0f  LLM 提供商 [{LLM_PROVIDER}] 配置不完整: {_llm_reason}")
+    print("   仍可使用：\U0001f504 数据爬取 + \u270f\ufe0f 纯数据查表模式")
+    print("   可点界面 \u2699\ufe0f 设置按钮填写密钥，或参考 CUSTOM_LLM_SETUP.md")
     print("=" * 50 + "\n")
-    GEMINI_API_KEY = ""  # 不退出，允许纯数据模式运行
-
-GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
 # ==================== 热键配置 ====================
 TOGGLE_HOTKEY = "Ctrl+F12"    # 切换悬浮窗显示/隐藏（全局热键，游戏中可用）
@@ -56,9 +133,10 @@ os.makedirs(APEXLOL_CACHE_DIR, exist_ok=True)
 # ==================== Prompt 配置 ====================
 from lang import STRINGS, PROMPTS
 
-# 翻译函数
+
 def T(key: str) -> str:
     """根据 LANGUAGE 获取对应语言文本。"""
     return STRINGS.get(LANGUAGE, STRINGS["zh"]).get(key, key)
+
 
 ANALYSIS_PROMPT = PROMPTS.get(LANGUAGE, PROMPTS["zh"])

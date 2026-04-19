@@ -41,6 +41,8 @@ STRINGS = {
         # ApexLol 数据
         "btn_data": "🔄 数据",
         "btn_data_updating": "⏳ 爬取中...",
+        # 设置
+        "btn_settings": "⚙️",
         "status_data_loaded": "✅ 已加载 {} 英雄数据 | 右键拖拽",
         "status_data_missing": "⚠️ 请点 🔄 数据 爮取英雄数据",
         "status_data_updating": "🔄 正在爮取英雄数据...",
@@ -98,6 +100,8 @@ STRINGS = {
         # ApexLol data
         "btn_data": "🔄 Data",
         "btn_data_updating": "⏳ Scraping...",
+        # Settings
+        "btn_settings": "⚙️",
         "status_data_loaded": "✅ Loaded {} champs | Right-click drag",
         "status_data_missing": "⚠️ Click 🔄 Data to fetch champion data",
         "status_data_updating": "🔄 Scraping champion data...",
