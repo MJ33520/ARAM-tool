@@ -121,6 +121,18 @@ class App:
             )
             self.btn_data.pack(side=tk.LEFT, padx=(1, 2))
 
+        # ⚙️ 设置
+        sep_set = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
+                           font=("Microsoft YaHei UI", 11))
+        sep_set.pack(side=tk.LEFT)
+        self.btn_settings = tk.Button(
+            btn_frame, text=T("btn_settings"), command=self._on_settings,
+            bg="#1a1a2e", fg="#aaaacc", activebackground="#2a2a4e",
+            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
+            padx=6, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+        )
+        self.btn_settings.pack(side=tk.LEFT, padx=(1, 2))
+
         self.status_label = tk.Label(
             self.root, text=T("status_ready"),
             bg="#1a1a2e", fg="#666680", font=("Microsoft YaHei UI", 8),
@@ -133,7 +145,8 @@ class App:
         # 拖拽
         self._drag_data = {"x": 0, "y": 0}
         drag_widgets = [self.btn_hextech, self.btn_show, self.btn_fix,
-                        sep2, sep_fix, self.status_label, btn_frame]
+                        sep2, sep_fix, sep_set, self.btn_settings,
+                        self.status_label, btn_frame]
         if APEXLOL_ENABLED:
             drag_widgets.extend([sep3, self.btn_data])
         for w in drag_widgets:
@@ -397,8 +410,8 @@ class App:
             
             # ===== 第2级：尝试 AI 极速前瞻（无需 LCU） =====
             try:
-                from config import GEMINI_API_KEY
-                if GEMINI_API_KEY:
+                from config import LLM_ENABLED
+                if LLM_ENABLED:
                     log.info("[指定英雄] 路径B: AI 极速前瞻（无 LCU 阵容）")
                     self._run_quick_guide(cmd)
                     return
@@ -1004,6 +1017,15 @@ class App:
             self.root.lift()
         except Exception:
             pass
+
+    def _on_settings(self):
+        try:
+            from settings_ui import open_settings_dialog
+            open_settings_dialog(self.root)
+        except Exception as e:
+            log.error(f"[设置] 打开失败: {e}")
+            from tkinter import messagebox
+            messagebox.showerror("⚠️", str(e), parent=self.root)
 
     def _start_drag(self, event):
         self._drag_data["x"] = event.x
