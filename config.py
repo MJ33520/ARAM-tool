@@ -49,6 +49,19 @@ def _pick(env_key: str, settings_key: str, default: str = "") -> str:
     return default
 
 
+def _pick_bool(env_key: str, settings_key: str, default: bool = True) -> bool:
+    """按 env > settings > default 读 bool 值。env 接受 true/false/1/0/yes/no/on/off。"""
+    v = os.environ.get(env_key)
+    if v is not None and v.strip():
+        return v.strip().lower() in ("true", "1", "yes", "on")
+    sv = _USER.get(settings_key)
+    if isinstance(sv, bool):
+        return sv
+    if isinstance(sv, str) and sv.strip():
+        return sv.strip().lower() in ("true", "1", "yes", "on")
+    return default
+
+
 # ==================== 语言配置 ====================
 # "zh" = 中文 (Chinese)  "en" = English
 LANGUAGE = _pick("LANGUAGE", "language", "zh").lower() or "zh"
@@ -72,6 +85,10 @@ OPENAI_API_ENDPOINT = _pick("OPENAI_API_ENDPOINT", "openai_api_endpoint", "https
 CUSTOM_API_KEY = _pick("CUSTOM_API_KEY", "custom_api_key", "")
 CUSTOM_MODEL = _pick("CUSTOM_MODEL", "custom_model", "")
 CUSTOM_API_ENDPOINT = _pick("CUSTOM_API_ENDPOINT", "custom_api_endpoint", "").rstrip("/")
+
+# ==================== 控制台（DOS 窗口）显隐 ====================
+# 启动时显示 Windows cmd/控制台窗口；False 则隐藏（适合打包成桌面快捷方式）
+SHOW_CONSOLE = _pick_bool("SHOW_CONSOLE", "show_console", True)
 
 
 # ==================== 配置校验 ====================
@@ -114,6 +131,7 @@ _RELOADABLE_KEYS = (
     "GEMINI_API_KEY", "GEMINI_MODEL", "GEN_AI_ENDPOINT",
     "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_API_ENDPOINT",
     "CUSTOM_API_KEY", "CUSTOM_MODEL", "CUSTOM_API_ENDPOINT",
+    "SHOW_CONSOLE",
 )
 
 
@@ -127,7 +145,7 @@ def reload() -> dict:
     global _USER, LLM_PROVIDER, GEMINI_API_KEY, GEMINI_MODEL, GEN_AI_ENDPOINT
     global OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_ENDPOINT
     global CUSTOM_API_KEY, CUSTOM_MODEL, CUSTOM_API_ENDPOINT
-    global LANGUAGE, LLM_ENABLED
+    global LANGUAGE, LLM_ENABLED, SHOW_CONSOLE
 
     old = {k: globals()[k] for k in (_RELOADABLE_KEYS + ("LANGUAGE",))}
 
@@ -145,6 +163,7 @@ def reload() -> dict:
     CUSTOM_API_KEY = _pick("CUSTOM_API_KEY", "custom_api_key", "")
     CUSTOM_MODEL = _pick("CUSTOM_MODEL", "custom_model", "")
     CUSTOM_API_ENDPOINT = _pick("CUSTOM_API_ENDPOINT", "custom_api_endpoint", "").rstrip("/")
+    SHOW_CONSOLE = _pick_bool("SHOW_CONSOLE", "show_console", True)
 
     ok, _ = _check_llm_config()
     LLM_ENABLED = ok

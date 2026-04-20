@@ -20,12 +20,14 @@ from tkinter import ttk, messagebox
 
 import config
 import llm_client
+import console_utils
 from config import (
     USER_SETTINGS_DIR, USER_SETTINGS_PATH, LANGUAGE,
     LLM_PROVIDER,
     GEMINI_API_KEY, GEMINI_MODEL, GEN_AI_ENDPOINT,
     OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_ENDPOINT,
     CUSTOM_API_KEY, CUSTOM_MODEL, CUSTOM_API_ENDPOINT,
+    SHOW_CONSOLE,
 )
 
 log = logging.getLogger("ARAM")
@@ -56,6 +58,8 @@ _I18N = {
         "test_ok_msg": "✅ Provider / Model / Key 均可用\n延迟: {latency_ms} ms\n\n返回片段：\n{reply}",
         "test_err_title": "连接失败",
         "test_err_msg": "❌ 测试失败（延迟 {latency_ms} ms）\n\n{error}",
+        "show_console": "显示控制台窗口 (DOS)",
+        "show_console_hint": "勾选后会显示启动时的命令行窗口；取消则隐藏。保存后即时生效。",
         "restart_notice_lang": "语言变更需要重启应用才能生效；LLM 配置改动保存后立即生效。",
         "file_notice": "设置保存至本地文件（含密钥明文）：",
         "save_ok_title": "已保存",
@@ -87,6 +91,8 @@ _I18N = {
         "test_ok_msg": "✅ Provider / Model / Key all working\nLatency: {latency_ms} ms\n\nReply preview:\n{reply}",
         "test_err_title": "Connection failed",
         "test_err_msg": "❌ Test failed ({latency_ms} ms)\n\n{error}",
+        "show_console": "Show console (DOS) window",
+        "show_console_hint": "Show the command-line window on launch; uncheck to hide. Takes effect on save.",
         "restart_notice_lang": "Language change requires a restart; LLM changes apply instantly on save.",
         "file_notice": "Settings are written locally (plaintext key):",
         "save_ok_title": "Saved",
@@ -145,6 +151,15 @@ class SettingsDialog:
         self.var_language = tk.StringVar(value=LANGUAGE if LANGUAGE in LANGS else "zh")
         ttk.Combobox(top, textvariable=self.var_language, values=LANGS,
                      state="readonly", width=6).grid(row=0, column=3, sticky="w")
+
+        # 杂项：显示控制台窗口
+        self.var_show_console = tk.BooleanVar(value=bool(SHOW_CONSOLE))
+        misc = tk.Frame(self.win, bg="#1a1a2e")
+        misc.pack(fill=tk.X, padx=16, pady=(2, 2))
+        tk.Checkbutton(misc, text=_t("show_console"), variable=self.var_show_console,
+                       bg="#1a1a2e", fg="#e0e0e0", selectcolor="#2a2a4e",
+                       activebackground="#1a1a2e", activeforeground="#e0e0e0",
+                       font=("Microsoft YaHei UI", 9)).pack(anchor="w")
 
         # ========== 中部：provider 相关字段（动态） ==========
         self.body = tk.Frame(self.win, bg="#1a1a2e")
@@ -379,6 +394,7 @@ class SettingsDialog:
         data = {
             "llm_provider": self.var_provider.get(),
             "language": self.var_language.get(),
+            "show_console": bool(self.var_show_console.get()),
             "gemini_api_key": self.vars["gemini_api_key"].get().strip(),
             "gemini_model": self.vars["gemini_model"].get().strip(),
             "gen_ai_endpoint": self.vars["gen_ai_endpoint"].get().strip(),
@@ -397,6 +413,10 @@ class SettingsDialog:
             changed = config.reload()
             llm_client.reset_client()
             log.info(f"[设置] 热重载完成，变更键: {list(changed.keys())}")
+
+            # 控制台显隐立即应用
+            if "SHOW_CONSOLE" in changed:
+                console_utils.set_console_visible(config.SHOW_CONSOLE)
 
             if "LANGUAGE" in changed:
                 msg_key = "save_ok_lang_restart"
