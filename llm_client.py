@@ -321,3 +321,127 @@ def fetch_openai_models(api_key: str, endpoint: str, timeout: float = 15.0) -> l
     data = resp.json()
     out = [m.get("id") for m in data.get("data", []) if m.get("id")]
     return sorted(set(out))
+
+
+# ==================== 连通性测试 ====================
+# 发一次极小的 "ping" 请求，验证 provider / key / model / endpoint 是否可用。
+# 返回统一字典，不抛异常：{"ok": bool, "latency_ms": int, "reply": str, "error": str}
+
+def _test_result(ok, latency_ms=0, reply="", error=""):
+    return {"ok": ok, "latency_ms": latency_ms, "reply": (reply or "")[:200], "error": error}
+
+
+def test_gemini(api_key: str, model: str, endpoint: str = "", timeout: float = 15.0) -> dict:
+    import time
+    import requests
+    if not api_key:
+        return _test_result(False, error="需要填写 API Key")
+    if not model:
+        return _test_result(False, error="需要填写模型名")
+
+    base = (endpoint or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+    if "/v1beta" not in base and "/v1" not in base:
+        base = base + "/v1beta"
+    url = f"{base}/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": "ping"}]}],
+        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 8},
+    }
+    t0 = time.time()
+    try:
+        resp = requests.post(url, json=payload, timeout=timeout)
+        latency = int((time.time() - t0) * 1000)
+        if resp.status_code != 200:
+            return _test_result(False, latency, error=f"{resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        try:
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            reply = str(data)[:200]
+        return _test_result(True, latency, reply=reply)
+    except Exception as e:
+        return _test_result(False, int((time.time() - t0) * 1000), error=str(e))
+
+
+def test_openai(api_key: str, model: str, endpoint: str, timeout: float = 15.0) -> dict:
+    import time
+    import requests
+    if not endpoint:
+        return _test_result(False, error="需要填写 API Endpoint")
+    if not model:
+        return _test_result(False, error="需要填写模型名")
+    if not api_key:
+        return _test_result(False, error="需要填写 API Key（本地后端也请填任意非空字符串）")
+
+    url = f"{endpoint.rstrip('/')}/chat/completions"
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "temperature": 0.0,
+        "max_tokens": 8,
+    }
+    t0 = time.time()
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        latency = int((time.time() - t0) * 1000)
+        if resp.status_code >= 400:
+            return _test_result(False, latency, error=f"{resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        try:
+            reply = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            reply = str(data)[:200]
+        return _test_result(True, latency, reply=reply)
+    except Exception as e:
+        return _test_result(False, int((time.time() - t0) * 1000), error=str(e))
+
+
+def test_custom(api_key: str, model: str, endpoint: str, timeout: float = 15.0) -> dict:
+    import time
+    import requests
+    if not endpoint:
+        return _test_result(False, error="需要填写 API Endpoint")
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {"model": model, "prompt": "ping", "temperature": 0.0}
+    t0 = time.time()
+    try:
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=timeout)
+        latency = int((time.time() - t0) * 1000)
+        if resp.status_code >= 400:
+            return _test_result(False, latency, error=f"{resp.status_code}: {resp.text[:200]}")
+        try:
+            data = resp.json()
+        except ValueError:
+            return _test_result(True, latency, reply=resp.text)
+        for path in (
+            ("choices", 0, "message", "content"),
+            ("choices", 0, "text"),
+            ("text",), ("response",), ("output",), ("content",),
+        ):
+            cur = data
+            try:
+                for k in path:
+                    cur = cur[k]
+                if isinstance(cur, str):
+                    return _test_result(True, latency, reply=cur)
+            except (KeyError, IndexError, TypeError):
+                continue
+        return _test_result(True, latency, reply=str(data)[:200])
+    except Exception as e:
+        return _test_result(False, int((time.time() - t0) * 1000), error=str(e))
+
+
+def test_provider(provider: str, api_key: str, model: str, endpoint: str = "",
+                  timeout: float = 15.0) -> dict:
+    p = (provider or "").lower()
+    if p == "gemini":
+        return test_gemini(api_key, model, endpoint, timeout)
+    if p == "openai":
+        return test_openai(api_key, model, endpoint, timeout)
+    if p == "custom":
+        return test_custom(api_key, model, endpoint, timeout)
+    return _test_result(False, error=f"未知 provider: {provider}")

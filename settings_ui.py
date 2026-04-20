@@ -50,6 +50,12 @@ _I18N = {
         "fetching": "⏳",
         "fetch_tooltip": "拉取可用模型列表",
         "fetch_err_title": "拉取模型失败",
+        "test": "🧪 测试",
+        "testing": "⏳ 测试中...",
+        "test_ok_title": "连接正常",
+        "test_ok_msg": "✅ Provider / Model / Key 均可用\n延迟: {latency_ms} ms\n\n返回片段：\n{reply}",
+        "test_err_title": "连接失败",
+        "test_err_msg": "❌ 测试失败（延迟 {latency_ms} ms）\n\n{error}",
         "restart_notice_lang": "语言变更需要重启应用才能生效；LLM 配置改动保存后立即生效。",
         "file_notice": "设置保存至本地文件（含密钥明文）：",
         "save_ok_title": "已保存",
@@ -75,6 +81,12 @@ _I18N = {
         "fetching": "⏳",
         "fetch_tooltip": "Fetch available models",
         "fetch_err_title": "Fetch failed",
+        "test": "🧪 Test",
+        "testing": "⏳ Testing...",
+        "test_ok_title": "Connection OK",
+        "test_ok_msg": "✅ Provider / Model / Key all working\nLatency: {latency_ms} ms\n\nReply preview:\n{reply}",
+        "test_err_title": "Connection failed",
+        "test_err_msg": "❌ Test failed ({latency_ms} ms)\n\n{error}",
         "restart_notice_lang": "Language change requires a restart; LLM changes apply instantly on save.",
         "file_notice": "Settings are written locally (plaintext key):",
         "save_ok_title": "Saved",
@@ -174,6 +186,13 @@ class SettingsDialog:
                        bg="#1a1a2e", fg="#e0e0e0", selectcolor="#2a2a4e",
                        activebackground="#1a1a2e", activeforeground="#e0e0e0",
                        font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT)
+        self.btn_test = tk.Button(btns, text=_t("test"), command=self._on_test,
+                                  bg="#2a2a4e", fg="#ffaa00",
+                                  activebackground="#3a3a5e",
+                                  activeforeground="#ffcc44", relief=tk.FLAT,
+                                  padx=10, pady=4, cursor="hand2",
+                                  font=("Microsoft YaHei UI", 9, "bold"))
+        self.btn_test.pack(side=tk.LEFT, padx=(12, 0))
         tk.Button(btns, text=_t("cancel"), command=self.win.destroy,
                   bg="#2a2a4e", fg="#e0e0e0", activebackground="#3a3a5e",
                   activeforeground="#ffffff", relief=tk.FLAT, padx=14, pady=4,
@@ -301,6 +320,59 @@ class SettingsDialog:
                 log.info(f"[设置] 已拉取 {len(models or [])} 个模型")
             except tk.TclError:
                 pass
+
+    # ---------- 连通性测试 ----------
+    def _on_test(self):
+        if getattr(self, "btn_test", None) is None:
+            return
+        self.btn_test.configure(text=_t("testing"), state=tk.DISABLED)
+
+        provider = self.var_provider.get()
+        if provider == "gemini":
+            key = self.vars["gemini_api_key"].get().strip()
+            model = self.vars["gemini_model"].get().strip()
+            endpoint = self.vars["gen_ai_endpoint"].get().strip()
+        elif provider == "openai":
+            key = self.vars["openai_api_key"].get().strip()
+            model = self.vars["openai_model"].get().strip()
+            endpoint = self.vars["openai_api_endpoint"].get().strip()
+        else:
+            key = self.vars["custom_api_key"].get().strip()
+            model = self.vars["custom_model"].get().strip()
+            endpoint = self.vars["custom_api_endpoint"].get().strip()
+
+        def worker():
+            result = llm_client.test_provider(provider, key, model, endpoint)
+            self.win.after(0, lambda: self._on_test_done(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_test_done(self, result: dict):
+        try:
+            self.btn_test.configure(text=_t("test"), state=tk.NORMAL)
+        except tk.TclError:
+            return  # 对话框已关
+        if result.get("ok"):
+            reply = (result.get("reply") or "").strip() or "(空回复)"
+            log.info(f"[设置] 测试通过，延迟 {result.get('latency_ms')}ms")
+            messagebox.showinfo(
+                _t("test_ok_title"),
+                _t("test_ok_msg").format(
+                    latency_ms=result.get("latency_ms", 0),
+                    reply=reply[:300],
+                ),
+                parent=self.win,
+            )
+        else:
+            log.warning(f"[设置] 测试失败: {result.get('error')}")
+            messagebox.showerror(
+                _t("test_err_title"),
+                _t("test_err_msg").format(
+                    latency_ms=result.get("latency_ms", 0),
+                    error=result.get("error", ""),
+                ),
+                parent=self.win,
+            )
 
     # ---------- 保存 ----------
     def _on_save(self):
