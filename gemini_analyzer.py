@@ -163,7 +163,10 @@ def analyze_hextech_choice(png_bytes: bytes, global_context: str,
         log.info("[LLM] 海克斯选择分析完成")
         return response_text
     except Exception as e:
-        return f"\u274c 海克斯分析失败: {str(e)}"
+        import traceback
+        trace = traceback.format_exc()
+        log.error(f"[海克斯图像] 分析失败: {e}\n{trace}")
+        return f"\u274c 海克斯分析失败: {e}\n\n{trace}"
 
 
 def analyze_hextech_text(ocr_names: list, hextech_history: list,
@@ -221,7 +224,10 @@ def analyze_hextech_text(ocr_names: list, hextech_history: list,
         log.info("[LLM] 纯文字海克斯分析完成")
         return response_text
     except Exception as e:
-        return f"\u274c 海克斯分析失败: {str(e)}"
+        import traceback
+        trace = traceback.format_exc()
+        log.error(f"[海克斯文字] 分析失败: {e}\n{trace}")
+        return f"\u274c 海克斯分析失败: {e}\n\n{trace}"
 
 
 if __name__ == "__main__":
