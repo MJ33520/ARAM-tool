@@ -106,6 +106,52 @@ if not LLM_ENABLED:
     print("   可点界面 \u2699\ufe0f 设置按钮填写密钥，或参考 CUSTOM_LLM_SETUP.md")
     print("=" * 50 + "\n")
 
+
+# ==================== 热重载 ====================
+# LLM 相关键：会被 reload() 重新计算；语言/UI 相关改动仍需重启
+_RELOADABLE_KEYS = (
+    "LLM_PROVIDER",
+    "GEMINI_API_KEY", "GEMINI_MODEL", "GEN_AI_ENDPOINT",
+    "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_API_ENDPOINT",
+    "CUSTOM_API_KEY", "CUSTOM_MODEL", "CUSTOM_API_ENDPOINT",
+)
+
+
+def reload() -> dict:
+    """重新读取 ~/.aram_tool/settings.json 并更新模块级 LLM 配置。
+
+    返回发生变化的键集合：{key: (old_value, new_value), ...}。
+    语言（LANGUAGE）不在热重载范围内——即使被改，也只记录变化，
+    不会立即影响已渲染的 tkinter 控件文案；调用方应据此提示用户"需重启"。
+    """
+    global _USER, LLM_PROVIDER, GEMINI_API_KEY, GEMINI_MODEL, GEN_AI_ENDPOINT
+    global OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_ENDPOINT
+    global CUSTOM_API_KEY, CUSTOM_MODEL, CUSTOM_API_ENDPOINT
+    global LANGUAGE, LLM_ENABLED
+
+    old = {k: globals()[k] for k in (_RELOADABLE_KEYS + ("LANGUAGE",))}
+
+    _USER = _load_user_settings()
+
+    LANGUAGE = _pick("LANGUAGE", "language", "zh").lower() or "zh"
+    LLM_PROVIDER = _pick("LLM_PROVIDER", "llm_provider", "gemini").lower() or "gemini"
+    GEMINI_API_KEY = _pick("GEMINI_API_KEY", "gemini_api_key", "")
+    GEMINI_MODEL = _pick("GEMINI_MODEL", "gemini_model", "gemini-3.1-flash-lite-preview")
+    GEN_AI_ENDPOINT = _pick("GEN_AI_ENDPOINT", "gen_ai_endpoint", "")
+    OPENAI_API_KEY = _pick("OPENAI_API_KEY", "openai_api_key", "")
+    OPENAI_MODEL = _pick("OPENAI_MODEL", "openai_model", "gpt-3.5-turbo")
+    OPENAI_API_ENDPOINT = _pick("OPENAI_API_ENDPOINT", "openai_api_endpoint",
+                                 "https://api.openai.com/v1").rstrip("/")
+    CUSTOM_API_KEY = _pick("CUSTOM_API_KEY", "custom_api_key", "")
+    CUSTOM_MODEL = _pick("CUSTOM_MODEL", "custom_model", "")
+    CUSTOM_API_ENDPOINT = _pick("CUSTOM_API_ENDPOINT", "custom_api_endpoint", "").rstrip("/")
+
+    ok, _ = _check_llm_config()
+    LLM_ENABLED = ok
+
+    new = {k: globals()[k] for k in (_RELOADABLE_KEYS + ("LANGUAGE",))}
+    return {k: (old[k], new[k]) for k in old if old[k] != new[k]}
+
 # ==================== 热键配置 ====================
 TOGGLE_HOTKEY = "Ctrl+F12"    # 切换悬浮窗显示/隐藏（全局热键，游戏中可用）
 

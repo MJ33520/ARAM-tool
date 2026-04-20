@@ -262,3 +262,62 @@ def get_client() -> LLMClient:
     if _default_client is None:
         _default_client = LLMClient()
     return _default_client
+
+
+def reset_client() -> None:
+    """丢弃已缓存的 LLMClient 单例。下次 get_client() 会按当前 config 重建。
+
+    设置对话框保存后调用，实现 provider / key / model / endpoint 的热重载。
+    """
+    global _default_client
+    _default_client = None
+
+
+# ==================== 模型列表拉取 ====================
+def fetch_gemini_models(api_key: str, endpoint: str = "", timeout: float = 15.0) -> list:
+    """GET {endpoint}/models?key=... 列出支持 generateContent 的模型。
+
+    endpoint 为空时使用官方 URL；传入自定义代理时自动补齐 /v1beta。
+    抛 RuntimeError 表示请求失败；正常返回排序后的模型短名列表。
+    """
+    import requests
+    if not api_key:
+        raise RuntimeError("需要填写 API Key 才能拉取模型列表")
+
+    base = (endpoint or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+    if "/v1beta" not in base and "/v1" not in base:
+        base = base + "/v1beta"
+    url = f"{base}/models?key={api_key}"
+
+    resp = requests.get(url, timeout=timeout)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini /models {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    out = []
+    for m in data.get("models", []):
+        name = m.get("name", "")
+        methods = m.get("supportedGenerationMethods", [])
+        if "generateContent" in methods:
+            short = name.split("/", 1)[-1] if "/" in name else name
+            if short:
+                out.append(short)
+    return sorted(set(out))
+
+
+def fetch_openai_models(api_key: str, endpoint: str, timeout: float = 15.0) -> list:
+    """GET {endpoint}/models（OpenAI / Azure / LM Studio / Ollama 均实现此端点）。"""
+    import requests
+    if not endpoint:
+        raise RuntimeError("需要填写 API Endpoint 才能拉取模型列表")
+
+    url = f"{endpoint.rstrip('/')}/models"
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    resp = requests.get(url, headers=headers, timeout=timeout)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"OpenAI /models {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    out = [m.get("id") for m in data.get("data", []) if m.get("id")]
+    return sorted(set(out))
