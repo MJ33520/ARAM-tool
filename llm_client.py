@@ -30,17 +30,29 @@ RETRY_DELAY = 1.0     # 重试前等待秒数
 
 
 def _is_retryable(exc: Exception) -> bool:
-    """判断是否为瞬态错误：SSL EOF / 超时 / 常见网络抖动。"""
+    """判断是否为瞬态错误：SSL EOF / 超时 / 网关 5xx / 限流 / 网络抖动。"""
     msg = str(exc).lower()
     if isinstance(exc, (concurrent.futures.TimeoutError, TimeoutError)):
         return True
     return (
+        # 网络层
         "unexpected_eof" in msg
         or "ssleoferror" in msg
         or "eof occurred" in msg
         or "connection reset" in msg
         or "connection aborted" in msg
         or "read timed out" in msg
+        # HTTP 层瞬态状态（服务/网关过载、限流、上游超时）
+        or " 429" in msg or "429:" in msg
+        or " 502" in msg or "502:" in msg
+        or " 503" in msg or "503:" in msg
+        or " 504" in msg or "504:" in msg
+        or "service unavailable" in msg
+        or "bad gateway" in msg
+        or "gateway timeout" in msg
+        or "overloaded" in msg
+        or "rate limit" in msg
+        or "too many requests" in msg
     )
 
 
