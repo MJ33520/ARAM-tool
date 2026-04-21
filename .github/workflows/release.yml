@@ -1,0 +1,73 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'         # 推 v 开头的 tag 触发：v0.1.0, v1.2.3 ...
+  workflow_dispatch:  # 支持在 Actions 页面手动触发
+
+permissions:
+  contents: write    # 允许 CI 创建 release
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          pyinstaller `
+            --noconsole `
+            --onefile `
+            --name "ARAM-Assistant" `
+            --collect-all google `
+            --collect-all google.genai `
+            --hidden-import google.genai `
+            main.py
+
+      - name: Stage release files
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}"
+          if ([string]::IsNullOrEmpty($ver) -or $ver -eq "main" -or $ver -eq "master") {
+            $ver = "dev-${{ github.run_number }}"
+          }
+          echo "RELEASE_VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          Copy-Item dist/ARAM-Assistant.exe release/
+          Copy-Item README.md release/ -ErrorAction SilentlyContinue
+          Copy-Item README_EN.md release/ -ErrorAction SilentlyContinue
+          Copy-Item CUSTOM_LLM_SETUP.md release/ -ErrorAction SilentlyContinue
+          Compress-Archive -Path release/* -DestinationPath "ARAM-Assistant-$ver-windows.zip" -Force
+
+      - name: Upload artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARAM-Assistant-${{ env.RELEASE_VERSION }}-windows
+          path: ARAM-Assistant-*.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ARAM-Assistant-*.zip
+          name: ARAM-Assistant ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
