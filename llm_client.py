@@ -30,17 +30,29 @@ RETRY_DELAY = 1.0     # 重试前等待秒数
 
 
 def _is_retryable(exc: Exception) -> bool:
-    """判断是否为瞬态错误：SSL EOF / 超时 / 常见网络抖动。"""
+    """判断是否为瞬态错误：SSL EOF / 超时 / 网关 5xx / 限流 / 网络抖动。"""
     msg = str(exc).lower()
     if isinstance(exc, (concurrent.futures.TimeoutError, TimeoutError)):
         return True
     return (
+        # 网络层
         "unexpected_eof" in msg
         or "ssleoferror" in msg
         or "eof occurred" in msg
         or "connection reset" in msg
         or "connection aborted" in msg
         or "read timed out" in msg
+        # HTTP 层瞬态状态（服务/网关过载、限流、上游超时）
+        or " 429" in msg or "429:" in msg
+        or " 502" in msg or "502:" in msg
+        or " 503" in msg or "503:" in msg
+        or " 504" in msg or "504:" in msg
+        or "service unavailable" in msg
+        or "bad gateway" in msg
+        or "gateway timeout" in msg
+        or "overloaded" in msg
+        or "rate limit" in msg
+        or "too many requests" in msg
     )
 
 
@@ -262,3 +274,186 @@ def get_client() -> LLMClient:
     if _default_client is None:
         _default_client = LLMClient()
     return _default_client
+
+
+def reset_client() -> None:
+    """丢弃已缓存的 LLMClient 单例。下次 get_client() 会按当前 config 重建。
+
+    设置对话框保存后调用，实现 provider / key / model / endpoint 的热重载。
+    """
+    global _default_client
+    _default_client = None
+
+
+# ==================== 模型列表拉取 ====================
+def fetch_gemini_models(api_key: str, endpoint: str = "", timeout: float = 15.0) -> list:
+    """GET {endpoint}/models?key=... 列出支持 generateContent 的模型。
+
+    endpoint 为空时使用官方 URL；传入自定义代理时自动补齐 /v1beta。
+    抛 RuntimeError 表示请求失败；正常返回排序后的模型短名列表。
+    """
+    import requests
+    if not api_key:
+        raise RuntimeError("需要填写 API Key 才能拉取模型列表")
+
+    base = (endpoint or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+    if "/v1beta" not in base and "/v1" not in base:
+        base = base + "/v1beta"
+    url = f"{base}/models?key={api_key}"
+
+    resp = requests.get(url, timeout=timeout)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini /models {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    out = []
+    for m in data.get("models", []):
+        name = m.get("name", "")
+        methods = m.get("supportedGenerationMethods", [])
+        if "generateContent" in methods:
+            short = name.split("/", 1)[-1] if "/" in name else name
+            if short:
+                out.append(short)
+    return sorted(set(out))
+
+
+def fetch_openai_models(api_key: str, endpoint: str, timeout: float = 15.0) -> list:
+    """GET {endpoint}/models（OpenAI / Azure / LM Studio / Ollama 均实现此端点）。"""
+    import requests
+    if not endpoint:
+        raise RuntimeError("需要填写 API Endpoint 才能拉取模型列表")
+
+    url = f"{endpoint.rstrip('/')}/models"
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    resp = requests.get(url, headers=headers, timeout=timeout)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"OpenAI /models {resp.status_code}: {resp.text[:300]}")
+    data = resp.json()
+    out = [m.get("id") for m in data.get("data", []) if m.get("id")]
+    return sorted(set(out))
+
+
+# ==================== 连通性测试 ====================
+# 发一次极小的 "ping" 请求，验证 provider / key / model / endpoint 是否可用。
+# 返回统一字典，不抛异常：{"ok": bool, "latency_ms": int, "reply": str, "error": str}
+
+def _test_result(ok, latency_ms=0, reply="", error=""):
+    return {"ok": ok, "latency_ms": latency_ms, "reply": (reply or "")[:200], "error": error}
+
+
+def test_gemini(api_key: str, model: str, endpoint: str = "", timeout: float = 15.0) -> dict:
+    import time
+    import requests
+    if not api_key:
+        return _test_result(False, error="需要填写 API Key")
+    if not model:
+        return _test_result(False, error="需要填写模型名")
+
+    base = (endpoint or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+    if "/v1beta" not in base and "/v1" not in base:
+        base = base + "/v1beta"
+    url = f"{base}/models/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": "ping"}]}],
+        "generationConfig": {"temperature": 0.0, "maxOutputTokens": 8},
+    }
+    t0 = time.time()
+    try:
+        resp = requests.post(url, json=payload, timeout=timeout)
+        latency = int((time.time() - t0) * 1000)
+        if resp.status_code != 200:
+            return _test_result(False, latency, error=f"{resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        try:
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            reply = str(data)[:200]
+        return _test_result(True, latency, reply=reply)
+    except Exception as e:
+        return _test_result(False, int((time.time() - t0) * 1000), error=str(e))
+
+
+def test_openai(api_key: str, model: str, endpoint: str, timeout: float = 15.0) -> dict:
+    import time
+    import requests
+    if not endpoint:
+        return _test_result(False, error="需要填写 API Endpoint")
+    if not model:
+        return _test_result(False, error="需要填写模型名")
+    if not api_key:
+        return _test_result(False, error="需要填写 API Key（本地后端也请填任意非空字符串）")
+
+    url = f"{endpoint.rstrip('/')}/chat/completions"
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "temperature": 0.0,
+        "max_tokens": 8,
+    }
+    t0 = time.time()
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        latency = int((time.time() - t0) * 1000)
+        if resp.status_code >= 400:
+            return _test_result(False, latency, error=f"{resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        try:
+            reply = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            reply = str(data)[:200]
+        return _test_result(True, latency, reply=reply)
+    except Exception as e:
+        return _test_result(False, int((time.time() - t0) * 1000), error=str(e))
+
+
+def test_custom(api_key: str, model: str, endpoint: str, timeout: float = 15.0) -> dict:
+    import time
+    import requests
+    if not endpoint:
+        return _test_result(False, error="需要填写 API Endpoint")
+
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {"model": model, "prompt": "ping", "temperature": 0.0}
+    t0 = time.time()
+    try:
+        resp = requests.post(endpoint, headers=headers, json=payload, timeout=timeout)
+        latency = int((time.time() - t0) * 1000)
+        if resp.status_code >= 400:
+            return _test_result(False, latency, error=f"{resp.status_code}: {resp.text[:200]}")
+        try:
+            data = resp.json()
+        except ValueError:
+            return _test_result(True, latency, reply=resp.text)
+        for path in (
+            ("choices", 0, "message", "content"),
+            ("choices", 0, "text"),
+            ("text",), ("response",), ("output",), ("content",),
+        ):
+            cur = data
+            try:
+                for k in path:
+                    cur = cur[k]
+                if isinstance(cur, str):
+                    return _test_result(True, latency, reply=cur)
+            except (KeyError, IndexError, TypeError):
+                continue
+        return _test_result(True, latency, reply=str(data)[:200])
+    except Exception as e:
+        return _test_result(False, int((time.time() - t0) * 1000), error=str(e))
+
+
+def test_provider(provider: str, api_key: str, model: str, endpoint: str = "",
+                  timeout: float = 15.0) -> dict:
+    p = (provider or "").lower()
+    if p == "gemini":
+        return test_gemini(api_key, model, endpoint, timeout)
+    if p == "openai":
+        return test_openai(api_key, model, endpoint, timeout)
+    if p == "custom":
+        return test_custom(api_key, model, endpoint, timeout)
+    return _test_result(False, error=f"未知 provider: {provider}")

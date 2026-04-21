@@ -13,11 +13,18 @@ import os
 import sys
 import io
 
+# 打包版（--noconsole）启动时无控制台；按 settings.json 的 show_console 值
+# 决定要不要 AllocConsole。必须在其它 import 之前做，让启动期日志能输出。
+from console_utils import bootstrap_from_settings
+bootstrap_from_settings()
+
 # Force utf-8 for stdout and stderr to prevent ascii encoding errors on Windows
 if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 if hasattr(sys.stderr, 'encoding') and sys.stderr.encoding and sys.stderr.encoding.lower() not in ('utf-8', 'utf8'):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 import time as _time
 import threading
@@ -48,7 +55,9 @@ from config import (
     OVERLAY_TITLE_COLOR, OVERLAY_WIDTH, OVERLAY_MAX_HEIGHT,
     OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE, OVERLAY_OPACITY, T,
     APEXLOL_ENABLED, APEXLOL_CACHE_DIR, APEXLOL_CACHE_TTL_DAYS,
+    SHOW_CONSOLE,
 )
+from console_utils import set_console_visible
 
 # 状态
 _is_analyzing = False
@@ -133,6 +142,18 @@ class App:
         )
         self.btn_settings.pack(side=tk.LEFT, padx=(1, 2))
 
+        # ✕ 退出
+        sep_exit = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
+                            font=("Microsoft YaHei UI", 11))
+        sep_exit.pack(side=tk.LEFT)
+        self.btn_exit = tk.Button(
+            btn_frame, text=T("btn_exit"), command=self._on_exit,
+            bg="#1a1a2e", fg="#ff5577", activebackground="#442233",
+            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
+            padx=6, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+        )
+        self.btn_exit.pack(side=tk.LEFT, padx=(1, 2))
+
         self.status_label = tk.Label(
             self.root, text=T("status_ready"),
             bg="#1a1a2e", fg="#666680", font=("Microsoft YaHei UI", 8),
@@ -146,6 +167,7 @@ class App:
         self._drag_data = {"x": 0, "y": 0}
         drag_widgets = [self.btn_hextech, self.btn_show, self.btn_fix,
                         sep2, sep_fix, sep_set, self.btn_settings,
+                        sep_exit, self.btn_exit,
                         self.status_label, btn_frame]
         if APEXLOL_ENABLED:
             drag_widgets.extend([sep3, self.btn_data])
@@ -1027,6 +1049,18 @@ class App:
             from tkinter import messagebox
             messagebox.showerror("⚠️", str(e), parent=self.root)
 
+    def _on_exit(self):
+        log.info("[退出] 用户点击退出按钮")
+        try:
+            print(f"\n{T('console_bye')}")
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+        sys.exit(0)
+
     def _start_drag(self, event):
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
@@ -1060,6 +1094,8 @@ def main():
 
     log.info(T("console_started"))
     app = App()
+    # 应用 DOS 窗口显隐偏好（只在 Windows 生效）
+    set_console_visible(SHOW_CONSOLE)
     try:
         app.run()
     except KeyboardInterrupt:

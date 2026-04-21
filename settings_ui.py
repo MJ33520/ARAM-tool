@@ -1,29 +1,38 @@
 # -*- coding: utf-8 -*-
 """ARAM 助手 - ⚙️ 设置对话框
 
-提供图形界面配置 LLM 提供商与界面语言，设置写入 ~/.aram_tool/settings.json。
-配置修改后需要重启应用生效（config.py 在启动时读取一次，LLMClient 是模块级单例）。
+图形界面配置 LLM 提供商与界面语言，设置写入 ~/.aram_tool/settings.json。
 
-写入文件使用 0600 权限（在 Unix 上生效；Windows 上无实际影响但不报错）。
+保存后行为：
+- LLM provider / key / model / endpoint 变更 → 热重载，即时生效（无需重启）
+- 语言变更 → 需要重启（按钮 / 文案已渲染到 tkinter 控件，逐个 configure 成本过高）
+
+模型名字段支持「🔄」一键从对应 provider 的 /models 端点拉取可用列表
+（Gemini / OpenAI 兼容均支持；自定义后端无标准 API，保留手填）。
 """
 
 import json
 import logging
 import os
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import config
+import llm_client
+import console_utils
 from config import (
     USER_SETTINGS_DIR, USER_SETTINGS_PATH, LANGUAGE,
     LLM_PROVIDER,
     GEMINI_API_KEY, GEMINI_MODEL, GEN_AI_ENDPOINT,
     OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_ENDPOINT,
     CUSTOM_API_KEY, CUSTOM_MODEL, CUSTOM_API_ENDPOINT,
+    SHOW_CONSOLE,
 )
 
 log = logging.getLogger("ARAM")
 
-# 本模块内的小型 i18n（不污染 lang.py 的大词表）
+# 本模块内的小型 i18n
 _I18N = {
     "zh": {
         "title": "⚙️ ARAM 助手 - 设置",
@@ -39,10 +48,23 @@ _I18N = {
         "save": "保存",
         "cancel": "取消",
         "show_key": "显示密钥",
-        "restart_notice": "保存后需要重启应用才能生效。",
+        "fetch_models": "🔄",
+        "fetching": "⏳",
+        "fetch_tooltip": "拉取可用模型列表",
+        "fetch_err_title": "拉取模型失败",
+        "test": "🧪 测试",
+        "testing": "⏳ 测试中...",
+        "test_ok_title": "连接正常",
+        "test_ok_msg": "✅ Provider / Model / Key 均可用\n延迟: {latency_ms} ms\n\n返回片段：\n{reply}",
+        "test_err_title": "连接失败",
+        "test_err_msg": "❌ 测试失败（延迟 {latency_ms} ms）\n\n{error}",
+        "show_console": "显示控制台窗口 (DOS)",
+        "show_console_hint": "勾选后会显示启动时的命令行窗口；取消则隐藏。保存后即时生效。",
+        "restart_notice_lang": "语言变更需要重启应用才能生效；LLM 配置改动保存后立即生效。",
         "file_notice": "设置保存至本地文件（含密钥明文）：",
         "save_ok_title": "已保存",
-        "save_ok_msg": "设置已写入：\n{path}\n\n请重启应用使修改生效。",
+        "save_ok_hot": "设置已保存并已生效，无需重启。\n\n{path}",
+        "save_ok_lang_restart": "设置已保存。LLM 配置已生效；\n语言变更需重启应用。\n\n{path}",
         "save_err_title": "保存失败",
     },
     "en": {
@@ -59,10 +81,23 @@ _I18N = {
         "save": "Save",
         "cancel": "Cancel",
         "show_key": "Show key",
-        "restart_notice": "A restart is required for changes to take effect.",
+        "fetch_models": "🔄",
+        "fetching": "⏳",
+        "fetch_tooltip": "Fetch available models",
+        "fetch_err_title": "Fetch failed",
+        "test": "🧪 Test",
+        "testing": "⏳ Testing...",
+        "test_ok_title": "Connection OK",
+        "test_ok_msg": "✅ Provider / Model / Key all working\nLatency: {latency_ms} ms\n\nReply preview:\n{reply}",
+        "test_err_title": "Connection failed",
+        "test_err_msg": "❌ Test failed ({latency_ms} ms)\n\n{error}",
+        "show_console": "Show console (DOS) window",
+        "show_console_hint": "Show the command-line window on launch; uncheck to hide. Takes effect on save.",
+        "restart_notice_lang": "Language change requires a restart; LLM changes apply instantly on save.",
         "file_notice": "Settings are written locally (plaintext key):",
         "save_ok_title": "Saved",
-        "save_ok_msg": "Settings written to:\n{path}\n\nPlease restart the app.",
+        "save_ok_hot": "Settings saved and applied — no restart needed.\n\n{path}",
+        "save_ok_lang_restart": "Settings saved. LLM changes are live;\nlanguage change needs a restart.\n\n{path}",
         "save_err_title": "Save failed",
     },
 }
@@ -88,7 +123,7 @@ def save_settings(data: dict) -> None:
 
 
 class SettingsDialog:
-    """模态设置对话框。不访问任何网络，只读写本地 JSON。"""
+    """模态设置对话框。保存后通过 config.reload() + llm_client.reset_client() 热生效。"""
 
     def __init__(self, parent: tk.Misc):
         self.parent = parent
@@ -117,6 +152,15 @@ class SettingsDialog:
         ttk.Combobox(top, textvariable=self.var_language, values=LANGS,
                      state="readonly", width=6).grid(row=0, column=3, sticky="w")
 
+        # 杂项：显示控制台窗口
+        self.var_show_console = tk.BooleanVar(value=bool(SHOW_CONSOLE))
+        misc = tk.Frame(self.win, bg="#1a1a2e")
+        misc.pack(fill=tk.X, padx=16, pady=(2, 2))
+        tk.Checkbutton(misc, text=_t("show_console"), variable=self.var_show_console,
+                       bg="#1a1a2e", fg="#e0e0e0", selectcolor="#2a2a4e",
+                       activebackground="#1a1a2e", activeforeground="#e0e0e0",
+                       font=("Microsoft YaHei UI", 9)).pack(anchor="w")
+
         # ========== 中部：provider 相关字段（动态） ==========
         self.body = tk.Frame(self.win, bg="#1a1a2e")
         self.body.pack(fill=tk.X, padx=16, pady=(4, 10))
@@ -134,14 +178,16 @@ class SettingsDialog:
             "custom_api_endpoint": tk.StringVar(value=CUSTOM_API_ENDPOINT),
         }
         self.show_key = tk.BooleanVar(value=False)
-        self._key_entries: list[tk.Entry] = []
+        self._key_entries: list = []
+        self._model_combo: ttk.Combobox = None
+        self._fetch_btn: tk.Button = None
 
         self._refresh_fields()
 
         # ========== 底部：提示 + 按钮 ==========
         notice = tk.Frame(self.win, bg="#1a1a2e")
         notice.pack(fill=tk.X, padx=16, pady=(0, 6))
-        tk.Label(notice, text="ⓘ " + _t("restart_notice"),
+        tk.Label(notice, text="ⓘ " + _t("restart_notice_lang"),
                  bg="#1a1a2e", fg="#ffaa00",
                  font=("Microsoft YaHei UI", 9)).pack(anchor="w")
         tk.Label(notice, text=_t("file_notice") + "\n" + USER_SETTINGS_PATH,
@@ -155,6 +201,13 @@ class SettingsDialog:
                        bg="#1a1a2e", fg="#e0e0e0", selectcolor="#2a2a4e",
                        activebackground="#1a1a2e", activeforeground="#e0e0e0",
                        font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT)
+        self.btn_test = tk.Button(btns, text=_t("test"), command=self._on_test,
+                                  bg="#2a2a4e", fg="#ffaa00",
+                                  activebackground="#3a3a5e",
+                                  activeforeground="#ffcc44", relief=tk.FLAT,
+                                  padx=10, pady=4, cursor="hand2",
+                                  font=("Microsoft YaHei UI", 9, "bold"))
+        self.btn_test.pack(side=tk.LEFT, padx=(12, 0))
         tk.Button(btns, text=_t("cancel"), command=self.win.destroy,
                   bg="#2a2a4e", fg="#e0e0e0", activebackground="#3a3a5e",
                   activeforeground="#ffffff", relief=tk.FLAT, padx=14, pady=4,
@@ -171,7 +224,8 @@ class SettingsDialog:
         self.win.geometry(f"+{(sw - w) // 2}+{(sh - h) // 2}")
 
     # ---------- 动态字段 ----------
-    def _add_row(self, label_text: str, var: tk.StringVar, row: int, is_key: bool = False, hint: str = None):
+    def _add_text_row(self, label_text: str, var: tk.StringVar, row: int,
+                      is_key: bool = False, hint: str = None):
         tk.Label(self.body, text=label_text, bg="#1a1a2e", fg="#e0e0e0",
                  font=("Microsoft YaHei UI", 10)).grid(row=row, column=0, sticky="e", padx=(0, 8), pady=3)
         entry = tk.Entry(self.body, textvariable=var, width=42,
@@ -180,30 +234,54 @@ class SettingsDialog:
         if is_key:
             entry.configure(show="*")
             self._key_entries.append(entry)
-        entry.grid(row=row, column=1, sticky="w", pady=3)
+        entry.grid(row=row, column=1, sticky="w", pady=3, columnspan=2)
         if hint:
             tk.Label(self.body, text=hint, bg="#1a1a2e", fg="#888899",
-                     font=("Microsoft YaHei UI", 8)).grid(row=row + 1, column=1, sticky="w", pady=(0, 4))
+                     font=("Microsoft YaHei UI", 8)).grid(
+                row=row + 1, column=1, sticky="w", pady=(0, 4), columnspan=2)
+
+    def _add_model_row(self, var: tk.StringVar, row: int, support_fetch: bool):
+        """模型名字段：editable Combobox；支持 fetch 时带 🔄 按钮。"""
+        tk.Label(self.body, text=_t("model"), bg="#1a1a2e", fg="#e0e0e0",
+                 font=("Microsoft YaHei UI", 10)).grid(row=row, column=0, sticky="e", padx=(0, 8), pady=3)
+        combo = ttk.Combobox(self.body, textvariable=var, values=[], width=34)
+        combo.grid(row=row, column=1, sticky="w", pady=3)
+        self._model_combo = combo
+
+        if support_fetch:
+            btn = tk.Button(self.body, text=_t("fetch_models"),
+                            command=self._on_fetch_models,
+                            bg="#2a2a4e", fg="#00d4ff", activebackground="#3a3a5e",
+                            activeforeground="#ffffff", relief=tk.FLAT,
+                            font=("Microsoft YaHei UI", 10, "bold"),
+                            padx=8, pady=2, cursor="hand2")
+            btn.grid(row=row, column=2, sticky="w", padx=(6, 0), pady=3)
+            self._fetch_btn = btn
 
     def _refresh_fields(self):
         for w in self.body.winfo_children():
             w.destroy()
         self._key_entries = []
+        self._model_combo = None
+        self._fetch_btn = None
 
         p = self.var_provider.get()
         if p == "gemini":
-            self._add_row(_t("api_key"), self.vars["gemini_api_key"], 0, is_key=True, hint=_t("gemini_hint"))
-            self._add_row(_t("model"), self.vars["gemini_model"], 2)
-            self._add_row(_t("endpoint") + " " + _t("endpoint_optional"),
-                          self.vars["gen_ai_endpoint"], 3)
+            self._add_text_row(_t("api_key"), self.vars["gemini_api_key"], 0,
+                               is_key=True, hint=_t("gemini_hint"))
+            self._add_model_row(self.vars["gemini_model"], 2, support_fetch=True)
+            self._add_text_row(_t("endpoint") + " " + _t("endpoint_optional"),
+                               self.vars["gen_ai_endpoint"], 3)
         elif p == "openai":
-            self._add_row(_t("api_key"), self.vars["openai_api_key"], 0, is_key=True, hint=_t("openai_hint"))
-            self._add_row(_t("model"), self.vars["openai_model"], 2)
-            self._add_row(_t("endpoint"), self.vars["openai_api_endpoint"], 3)
+            self._add_text_row(_t("api_key"), self.vars["openai_api_key"], 0,
+                               is_key=True, hint=_t("openai_hint"))
+            self._add_model_row(self.vars["openai_model"], 2, support_fetch=True)
+            self._add_text_row(_t("endpoint"), self.vars["openai_api_endpoint"], 3)
         elif p == "custom":
-            self._add_row(_t("api_key"), self.vars["custom_api_key"], 0, is_key=True, hint=_t("custom_hint"))
-            self._add_row(_t("model"), self.vars["custom_model"], 2)
-            self._add_row(_t("endpoint"), self.vars["custom_api_endpoint"], 3)
+            self._add_text_row(_t("api_key"), self.vars["custom_api_key"], 0,
+                               is_key=True, hint=_t("custom_hint"))
+            self._add_model_row(self.vars["custom_model"], 2, support_fetch=False)
+            self._add_text_row(_t("endpoint"), self.vars["custom_api_endpoint"], 3)
 
         self._toggle_key_visibility()
 
@@ -212,11 +290,111 @@ class SettingsDialog:
         for e in self._key_entries:
             e.configure(show=show_char)
 
+    # ---------- 拉取模型列表 ----------
+    def _on_fetch_models(self):
+        if self._fetch_btn is None:
+            return
+        self._fetch_btn.configure(text=_t("fetching"), state=tk.DISABLED)
+        provider = self.var_provider.get()
+
+        # 捕获当前对话框内的值（不是已保存的 config）
+        if provider == "gemini":
+            key = self.vars["gemini_api_key"].get().strip()
+            endpoint = self.vars["gen_ai_endpoint"].get().strip()
+            fetch_fn = lambda: llm_client.fetch_gemini_models(key, endpoint)
+        elif provider == "openai":
+            key = self.vars["openai_api_key"].get().strip()
+            endpoint = self.vars["openai_api_endpoint"].get().strip()
+            fetch_fn = lambda: llm_client.fetch_openai_models(key, endpoint)
+        else:
+            self._fetch_btn.configure(text=_t("fetch_models"), state=tk.NORMAL)
+            return
+
+        def worker():
+            try:
+                models = fetch_fn()
+                self.win.after(0, lambda: self._on_fetch_done(models, None))
+            except Exception as e:
+                self.win.after(0, lambda: self._on_fetch_done(None, e))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_fetch_done(self, models, err):
+        if self._fetch_btn is not None:
+            try:
+                self._fetch_btn.configure(text=_t("fetch_models"), state=tk.NORMAL)
+            except tk.TclError:
+                pass  # 对话框已关闭
+        if err is not None:
+            log.warning(f"[设置] 拉取模型失败: {err}")
+            messagebox.showerror(_t("fetch_err_title"), str(err), parent=self.win)
+            return
+        if self._model_combo is not None:
+            try:
+                self._model_combo.configure(values=models or [])
+                log.info(f"[设置] 已拉取 {len(models or [])} 个模型")
+            except tk.TclError:
+                pass
+
+    # ---------- 连通性测试 ----------
+    def _on_test(self):
+        if getattr(self, "btn_test", None) is None:
+            return
+        self.btn_test.configure(text=_t("testing"), state=tk.DISABLED)
+
+        provider = self.var_provider.get()
+        if provider == "gemini":
+            key = self.vars["gemini_api_key"].get().strip()
+            model = self.vars["gemini_model"].get().strip()
+            endpoint = self.vars["gen_ai_endpoint"].get().strip()
+        elif provider == "openai":
+            key = self.vars["openai_api_key"].get().strip()
+            model = self.vars["openai_model"].get().strip()
+            endpoint = self.vars["openai_api_endpoint"].get().strip()
+        else:
+            key = self.vars["custom_api_key"].get().strip()
+            model = self.vars["custom_model"].get().strip()
+            endpoint = self.vars["custom_api_endpoint"].get().strip()
+
+        def worker():
+            result = llm_client.test_provider(provider, key, model, endpoint)
+            self.win.after(0, lambda: self._on_test_done(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_test_done(self, result: dict):
+        try:
+            self.btn_test.configure(text=_t("test"), state=tk.NORMAL)
+        except tk.TclError:
+            return  # 对话框已关
+        if result.get("ok"):
+            reply = (result.get("reply") or "").strip() or "(空回复)"
+            log.info(f"[设置] 测试通过，延迟 {result.get('latency_ms')}ms")
+            messagebox.showinfo(
+                _t("test_ok_title"),
+                _t("test_ok_msg").format(
+                    latency_ms=result.get("latency_ms", 0),
+                    reply=reply[:300],
+                ),
+                parent=self.win,
+            )
+        else:
+            log.warning(f"[设置] 测试失败: {result.get('error')}")
+            messagebox.showerror(
+                _t("test_err_title"),
+                _t("test_err_msg").format(
+                    latency_ms=result.get("latency_ms", 0),
+                    error=result.get("error", ""),
+                ),
+                parent=self.win,
+            )
+
     # ---------- 保存 ----------
     def _on_save(self):
         data = {
             "llm_provider": self.var_provider.get(),
             "language": self.var_language.get(),
+            "show_console": bool(self.var_show_console.get()),
             "gemini_api_key": self.vars["gemini_api_key"].get().strip(),
             "gemini_model": self.vars["gemini_model"].get().strip(),
             "gen_ai_endpoint": self.vars["gen_ai_endpoint"].get().strip(),
@@ -230,9 +408,23 @@ class SettingsDialog:
         try:
             save_settings(data)
             log.info(f"[设置] 已写入 {USER_SETTINGS_PATH}")
+
+            # 热重载：LLM 配置立即生效，语言不热重载
+            changed = config.reload()
+            llm_client.reset_client()
+            log.info(f"[设置] 热重载完成，变更键: {list(changed.keys())}")
+
+            # 控制台显隐立即应用
+            if "SHOW_CONSOLE" in changed:
+                console_utils.set_console_visible(config.SHOW_CONSOLE)
+
+            if "LANGUAGE" in changed:
+                msg_key = "save_ok_lang_restart"
+            else:
+                msg_key = "save_ok_hot"
             messagebox.showinfo(
                 _t("save_ok_title"),
-                _t("save_ok_msg").format(path=USER_SETTINGS_PATH),
+                _t(msg_key).format(path=USER_SETTINGS_PATH),
                 parent=self.win,
             )
             self.win.destroy()

@@ -43,6 +43,7 @@ STRINGS = {
         "btn_data_updating": "⏳ 爬取中...",
         # 设置
         "btn_settings": "⚙️",
+        "btn_exit": "✕",
         "status_data_loaded": "✅ 已加载 {} 英雄数据 | 右键拖拽",
         "status_data_missing": "⚠️ 请点 🔄 数据 爮取英雄数据",
         "status_data_updating": "🔄 正在爮取英雄数据...",
@@ -102,6 +103,7 @@ STRINGS = {
         "btn_data_updating": "⏳ Scraping...",
         # Settings
         "btn_settings": "⚙️",
+        "btn_exit": "✕",
         "status_data_loaded": "✅ Loaded {} champs | Right-click drag",
         "status_data_missing": "⚠️ Click 🔄 Data to fetch champion data",
         "status_data_updating": "🔄 Scraping champion data...",
