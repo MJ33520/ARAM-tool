@@ -56,25 +56,108 @@ def _redirect_stdio_to_null() -> None:
         log.debug(f"[console] 重定向 stdio 失败（不致命）: {e}")
 
 
-def set_console_visible(visible: bool) -> None:
-    """显示或隐藏当前进程关联的 DOS 窗口。"""
+def _rebind_stdio_to_console() -> None:
+    """AllocConsole 后重新把 stdin/stdout/stderr 绑到新分配的控制台。"""
+    try:
+        sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+        sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+    except Exception as e:
+        log.debug(f"[console] 重绑 stdout/stderr 到 CONOUT$ 失败: {e}")
+    try:
+        sys.stdin = open("CONIN$", "r", encoding="utf-8", errors="replace")
+    except Exception:
+        pass  # stdin 失败不致命
+
+
+def ensure_console_allocated() -> bool:
+    """若当前进程无控制台（--noconsole 打包 / pythonw 启动），分配一个并绑定 stdio。
+
+    返回是否分配了新控制台（已有则返回 False）。
+    """
     global _console_freed
     if not _is_windows():
+        return False
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        if kernel32.GetConsoleWindow():
+            return False  # 已有控制台
+        if kernel32.AllocConsole():
+            _console_freed = False
+            _rebind_stdio_to_console()
+            log.debug("[console] 已 AllocConsole（新分配控制台）")
+            return True
+    except Exception as e:
+        log.warning(f"[console] AllocConsole 失败: {e}")
+    return False
+
+
+def bootstrap_from_settings() -> None:
+    """启动时极早调用：不走 config，手工读 settings.json + env 决定是否分配控制台。
+
+    打包版（--noconsole）默认无控制台，若用户设置 show_console=True，
+    此函数会在 main.py 的其它 import 之前 AllocConsole，让启动期日志
+    能正常打印到新控制台。
+    """
+    if not _is_windows():
         return
-    if _console_freed:
-        # 已彻底断开，无法再恢复；记日志即可
-        if visible:
-            log.info("[console] 控制台已断开（FreeConsole），显示需重启应用")
+    try:
+        import ctypes
+        import json as _json
+        kernel32 = ctypes.windll.kernel32
+        if kernel32.GetConsoleWindow():
+            return  # 源码运行，cmd 已提供控制台
+
+        # show_console 默认 True；env > settings.json > default
+        show = True
+        path = os.path.join(os.path.expanduser("~"), ".aram_tool", "settings.json")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+                    if isinstance(data, dict) and "show_console" in data:
+                        show = bool(data["show_console"])
+            except Exception:
+                pass
+        env = os.environ.get("SHOW_CONSOLE")
+        if env is not None and env.strip():
+            show = env.strip().lower() in ("true", "1", "yes", "on")
+
+        if show:
+            ensure_console_allocated()
+    except Exception as e:
+        # 启动期不要崩，静默降级
+        try:
+            log.warning(f"[console] bootstrap 失败: {e}")
+        except Exception:
+            pass
+
+
+def set_console_visible(visible: bool) -> None:
+    """显示或隐藏当前进程关联的 DOS 窗口。
+
+    visible=True 时若无控制台（比如 --noconsole 打包的 exe）会先 AllocConsole。
+    FreeConsole 之后，再次 set_console_visible(True) 只能在重启后生效。
+    """
+    global _console_freed
+    if not _is_windows():
         return
     try:
         import ctypes
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
         hwnd = kernel32.GetConsoleWindow()
-        if not hwnd:
-            return
 
         if visible:
+            if not hwnd:
+                # 打包版 / pythonw 启动：按需分配
+                if _console_freed:
+                    log.info("[console] 控制台已 FreeConsole 断开，需重启应用恢复")
+                    return
+                if ensure_console_allocated():
+                    hwnd = kernel32.GetConsoleWindow()
+                if not hwnd:
+                    return  # 还是没有，放弃
             ex = user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
             user32.SetWindowLongW(hwnd, _GWL_EXSTYLE,
                                   (ex & ~_WS_EX_TOOLWINDOW) | _WS_EX_APPWINDOW)
@@ -88,6 +171,8 @@ def set_console_visible(visible: bool) -> None:
             return
 
         # ===== 隐藏路径 =====
+        if not hwnd:
+            return  # 本来就没有，无需隐藏
         # 1. 剥任务栏样式
         ex = user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
         user32.SetWindowLongW(hwnd, _GWL_EXSTYLE,
@@ -106,7 +191,7 @@ def set_console_visible(visible: bool) -> None:
             log.debug("[console] 已 SW_HIDE + SWP_HIDEWINDOW")
             return
 
-        # 4. 终极手段：FreeConsole。先重定向 stdio 防崩溃。
+        # 4. 终极手段：FreeConsole
         log.info("[console] 常规隐藏无效（可能是 Windows Terminal），"
                  "使用 FreeConsole 断开控制台")
         _redirect_stdio_to_null()

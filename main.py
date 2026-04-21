@@ -13,11 +13,18 @@ import os
 import sys
 import io
 
+# 打包版（--noconsole）启动时无控制台；按 settings.json 的 show_console 值
+# 决定要不要 AllocConsole。必须在其它 import 之前做，让启动期日志能输出。
+from console_utils import bootstrap_from_settings
+bootstrap_from_settings()
+
 # Force utf-8 for stdout and stderr to prevent ascii encoding errors on Windows
 if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 if hasattr(sys.stderr, 'encoding') and sys.stderr.encoding and sys.stderr.encoding.lower() not in ('utf-8', 'utf8'):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 import time as _time
 import threading
