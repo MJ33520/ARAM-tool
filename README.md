@@ -3,133 +3,164 @@
 > **[English](README_EN.md)** | 中文
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
-![Gemini](https://img.shields.io/badge/AI-Gemini-orange?logo=google)
+![LLM](https://img.shields.io/badge/LLM-Gemini%20%7C%20OpenAI%20%7C%20Custom-orange)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey?logo=windows)
+[![Release](https://img.shields.io/github/v/release/Zayia/ARAM-tool?include_prereleases)](https://github.com/Zayia/ARAM-tool/releases)
 
-基于 **Gemini AI** 的英雄联盟海克斯大乱斗（ARAM）实时分析助手。选英雄阶段可在工具内手动输入选择英雄，进入加载界面后，AI 自动识别双方阵容，为你提供出装、海斗符文、打法的完整攻略。
+英雄联盟海克斯大乱斗（ARAM）实时 AI 攻略助手。支持 **Gemini / OpenAI 兼容 / 自定义后端** 三种 LLM，进入加载界面后自动识别双方阵容，输出出装、海斗符文、打法的完整攻略。
 
 ## ✨ 功能
 
-- 🤖 **智能阵容识别** — AI 从加载界面读取所有英雄名，自动识别你的英雄
+- 🤖 **多 LLM 支持** — Gemini / OpenAI 官方 / Azure / LM Studio / Ollama / 任意 OpenAI 兼容网关 / 自定义 POST JSON 后端
+- ⚙️ **图形界面配置** — 浮动栏点 `⚙️` 切换 provider、填 Key、测连通、选模型，保存后**即时生效无需重启**
+- 🧪 **连通性测试** — 保存前一键 ping 一次，确认 provider/model/key 可用
+- 🔄 **模型列表自动拉取** — Gemini 和 OpenAI provider 都能从 `/models` 端点拉取可用模型
 - 📋 **完整攻略输出** — 海克斯符文、6件装备、技能加点、打法要点、团队策略
-- 🖥️ **悬浮窗显示** — 始终置顶的攻略窗口，支持拖拽和快捷键
-- 🌐 **中英文切换** — 一行配置切换界面语言和 AI 分析语言
+- 🖥️ **悬浮窗显示** — 始终置顶、支持拖拽、全局热键 `Ctrl+F12` 切换显示
+- ✕ **一键退出 / 控制台显隐** — 浮动栏的 `✕` 按钮关闭整个程序；`⚙️` 里可选是否显示 DOS 窗口
+- 🌐 **中英文切换** — UI 文案和 AI 分析语言
+- ♻️ **瞬态错误自动重试** — SSL EOF / 503 / 502 / 504 / 429 / rate limit 触发 2 次自动重试
+
+---
 
 ## 🚀 快速开始
 
-### 1. 获取 Gemini API Key
+### 方式 A：直接下载 `.exe`（推荐，无需装 Python）
 
-前往 [Google AI Studio](https://aistudio.google.com/apikey) 免费获取 API Key。
+1. 前往 [Releases](https://github.com/Zayia/ARAM-tool/releases) 下载 `ARAM-Assistant-*-windows.zip`
+   - `v*` tag 是稳定版
+   - `dev-latest` 是滚动最新构建
+2. 解压双击 `ARAM-Assistant.exe`
+3. 首次启动点浮动栏 `⚙️` 按钮配置 LLM 提供商和 API Key
+4. [获取 Gemini API Key](https://aistudio.google.com/apikey)（免费）或填任意 OpenAI 兼容密钥
 
-### 2. 设置环境变量
+### 方式 B：从源码运行（开发 / 自定义）
 
 ```cmd
-setx GEMINI_API_KEY "你的API密钥"
-```
-
-### 3. 安装依赖
-
-```cmd
+git clone https://github.com/Zayia/ARAM-tool.git
+cd ARAM-tool
 pip install -r requirements.txt
-```
-
-### 4. 启动
-
-**方式A: 命令行启动**
-
-在项目根目录下打开终端，执行：
-
-```
 python main.py
 ```
 
-**方式 B：直接启动（需自行管理 Python 环境）**
+启动后点浮动栏 `⚙️` 按钮配置 LLM。
 
-适用于已经手动配置好 Python 环境及依赖的用户。
-
-- **脚本启动**：直接双击运行 `launch.bat`。
-
-**方式 C：使用 `uv` 自动化启动**
-
-适用于希望自动管理依赖、避免环境污染的用户。此方式通过 `launch_by_uv.bat` 实现一键配置与运行。
-
-1. **安装 uv**：确保系统已安装 Python 包管理器 [uv](https://docs.astral.sh/uv/getting-started/installation/)。
-2. **配置路径文件**（请确保文件内仅包含配置信息，无多余空格或换行）：
-   - **LOL_LAUNCHER_PATH**：在项目根目录下创建一个名为 `LOL_LAUNCHER_PATH` 的文件，写入英雄联盟客户端的完整路径。
-     - *示例：`D:\Tencent\WeGameApps\英雄联盟\Launcher\Client.exe`*
-   - **GEMINI_API_KEY**：在项目根目录下创建一个名为 `GEMINI_API_KEY` 的文件，写入你的 API 密钥。
-     - *示例：`vK9mR2xT5zW8nL4pQ-jA1sB6dF3gH0vC9uN2mY5`*
-3. **执行启动**：
-   - **双击 `launch_by_uv.bat`**：脚本将自动检查 `uv` 环境、安装依赖、加载配置并启动游戏及程序。
+---
 
 ## 🎮 使用方法
 
-1. 启动助手后，屏幕左上角出现 `[⚔️ 分析 | 📋 攻略]` 浮动按钮
-2. 进入大乱斗加载界面后，点击 **⚔️ 分析**
-3. 等待 15-30 秒，AI 分析完成后自动弹出攻略窗口
-4. 按 **Ctrl+F12** 可随时切换攻略窗口的显示/隐藏
+浮动按钮栏：`⚡海克斯  |  📋攻略  |  ✏️纠错  |  🔄数据  |  ⚙️  |  ✕`
 
-## 🌐 语言切换
+| 按钮 | 作用 |
+|------|------|
+| ⚡ 海克斯 | 截图识别当前 3 选 1，给出选择建议 |
+| 📋 攻略 | 显示 / 隐藏全局攻略窗口 |
+| ✏️ 纠错 | 英雄识别错了时手动指定英雄名 |
+| 🔄 数据 | 从 ApexLol 拉取英雄海克斯数据（本地缓存 7 天） |
+| ⚙️ | 打开设置对话框（LLM provider、模型、密钥、界面语言、控制台开关） |
+| ✕ | 退出程序 |
 
-编辑 `config.py`，修改 `LANGUAGE` 的值：
+**拖拽**：右键按住任意按钮 / 分隔符 / 状态栏拖动整个浮动栏。
+**全局热键**：`Ctrl+F12` 切换攻略窗口显示/隐藏（游戏中也能触发）。
+**控制台**：⚙️ 中「显示控制台窗口 (DOS)」复选框——勾选显示黑色 DOS 窗口查看实时日志，取消勾选彻底隐藏。
 
-```python
-LANGUAGE = "zh"   # 中文（默认）
-LANGUAGE = "en"   # English
-```
+---
 
-切换后，界面文字、控制台提示和 AI 分析结果的语言都会相应改变。
+## 🔧 配置 LLM 提供商
+
+**三种方式**，优先级：**环境变量 > `~/.aram_tool/settings.json` > 代码默认值**
+
+1. **⚙️ UI**（推荐）：浮动栏点 `⚙️` → 填写 → 保存，即时生效
+2. **环境变量**：`set LLM_PROVIDER=openai` / `set OPENAI_API_KEY=...` 等
+3. **直接改 `config.py` 默认值**（不推荐，易误提交密钥）
+
+完整参数清单、常见场景（LM Studio / Ollama / Azure / 代理）、故障排查见 [CUSTOM_LLM_SETUP.md](CUSTOM_LLM_SETUP.md)。
+
+---
 
 ## 📁 文件说明
 
 | 文件 | 说明 |
 |------|------|
-| `main.py` | 主入口，浮动按钮和攻略窗口 |
-| `config.py` | 配置文件（API Key、语言、UI） |
-| `lang.py` | 多语言字符串和 Prompt（中/英） |
-| `screenshot.py` | 截图模块 |
-| `gemini_analyzer.py` | Gemini API 调用模块（含 SSL 自动重试） |
-| `apexlol_scraper.py` | ApexLol.info 数据爬取模块 |
-| `apexlol_data.py` | 数据缓存管理与查询 |
-| `launch.bat` | Windows 启动脚本 |
+| `main.py` | 主入口；浮动按钮栏和所有 Toplevel 窗口 |
+| `config.py` | 配置读取（env > settings.json > default）、`reload()` 支持热重载 |
+| `llm_client.py` | 统一 LLM 适配层（Gemini / OpenAI / Custom）、重试、`test_*()`、模型列表拉取 |
+| `gemini_analyzer.py` | 3 种分析模式的业务逻辑（全局 / 海克斯选择 / 更新），走 `LLMClient` |
+| `settings_ui.py` | ⚙️ 设置对话框（Toplevel）、保存后自动 `config.reload()` |
+| `console_utils.py` | DOS 窗口的 AllocConsole / 真·隐藏（SW_HIDE → SWP_HIDEWINDOW → FreeConsole） |
+| `lang.py` | 中英文文案 + 所有 AI prompt |
+| `screenshot.py` | mss 截图模块 |
+| `apexlol_scraper.py` / `apexlol_data.py` | 爬取 ApexLol.info 数据 + 本地缓存 |
+| `lcu_client.py` | LCU API 客户端（直接从 LoL 客户端读英雄） |
+| `launch.bat` / `launch_by_uv.bat` | Windows 启动脚本（source 运行） |
+| `build.bat` | 本地 PyInstaller 打包脚本（`--noconsole --onefile`） |
+| `.github/workflows/release.yml` | CI：每次 push 产出 `dev-latest`，`v*` tag 出正式 release |
+
+---
+
+## 🏗️ 自行打包
+
+需要 Windows 环境（PyInstaller 不支持跨平台编译）。
+
+**本地打包**：双击 `build.bat`，产出 `dist\ARAM-Assistant.exe`
+
+**CI 打包**：推 `v*` tag 自动出正式 release
+```cmd
+git tag -a v0.2.0 -m "release notes"
+git push origin v0.2.0
+```
+任意分支 push 会刷新 `dev-latest` 滚动 pre-release。
+
+---
 
 ## 🔧 要求
 
-- **操作系统**: Windows 10/11
-- **Python**: 3.10+
-- **网络**: 能访问 Google Gemini API
-- **游戏**: 英雄联盟（国服/国际服）
+- **操作系统**：Windows 10/11
+- **Python**（仅源码运行）：3.10+
+- **网络**：能访问所选 LLM 的 API 端点
+- **游戏**：英雄联盟（国服 / 国际服均可）
+
+---
 
 ## 📝 注意事项
 
-- 截图分析需要在 **加载界面** 触发（可以看到所有英雄卡片的时候）
-- 每次分析耗时约 15-30 秒，取决于网络和 API 响应速度
-- 浮动按钮可以右键拖拽移动位置
-- 攻略窗口按 Esc 隐藏，点 📋 重新显示
+- 海克斯截图分析需要在**加载界面 / 海克斯选择界面**触发（能看到选项卡片）
+- 单次分析耗时 5-30 秒，取决于 provider 和网络
+- 打包版默认无 DOS 窗口；可在 ⚙️ 里开启（仅 Windows 生效）
+- `~/.aram_tool/settings.json` 含 API Key 明文，权限 0600（Unix）
+
+---
 
 ## 📊 数据来源声明
 
-本工具的海克斯符文推荐数据来源于 **[ApexLol.info](https://apexlol.info)**。
+海克斯符文推荐数据来源于 **[ApexLol.info](https://apexlol.info)**。
 
-- 数据仅在用户**主动点击 🔄 数据 按钮**时爬取，不会自动抓取
-- 爬取频率受限（每次请求间隔 0.4 秒），尽量减少对源站的负载
-- 数据本地缓存 7 天，避免重复请求
-- 本项目与 ApexLol.info **没有官方合作关系**，所有数据版权归 ApexLol.info 及其数据提供者所有
-- 如果 ApexLol.info 的运营方认为本项目的数据引用方式不当，请通过 GitHub Issues 联系我，我会立即处理
+- 仅在用户**主动点击 🔄 数据 按钮**时爬取，不自动抓取
+- 请求间隔 0.4 秒，减少源站压力
+- 本地缓存 7 天避免重复请求
+- 本项目与 ApexLol.info 无官方合作关系，数据版权归原站
+- 若源站运营方认为数据引用方式不当，请通过 GitHub Issues 联系
+
+---
 
 ## ⚠️ 免责声明
 
-- 本工具为个人学习项目，仅供参考，不保证分析结果的准确性
-- 本工具与 Riot Games 或 League of Legends 没有任何官方关联
-- 本工具**不读取、不修改任何游戏数据**，仅通过截取屏幕截图 + AI 分析提供参考建议。但不排除 Riot 可能将此类第三方工具误判为违规，**使用本工具请自行评估封号风险**
-- 使用本工具时请遵守游戏的使用条款
+- 个人学习项目，仅供参考，不保证分析准确性
+- 与 Riot Games / League of Legends 无官方关联
+- 工具**不读取、不修改任何游戏数据**，仅通过截图 + AI 分析提供参考
+- 不排除 Riot 误判为违规工具——**使用需自行评估封号风险**
+- 使用请遵守游戏条款
+
+---
 
 ## Contributors
 
-- **[USER]** - Project logic & review
-- **Antigravity (AI)** - Implementation & Optimization
+- **[Zayia](https://github.com/Zayia)** - Project logic & review
+- **Antigravity (AI) / Claude** - Implementation & Optimization
 
-Welcome to submit Pull Requests!
+欢迎提交 Pull Request！
+
+---
 
 ## 📄 License
 
