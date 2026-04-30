@@ -73,6 +73,8 @@ def ensure_console_allocated() -> bool:
     """若当前进程无控制台（--noconsole 打包 / pythonw 启动），分配一个并绑定 stdio。
 
     返回是否分配了新控制台（已有则返回 False）。
+    AllocConsole 之后强制 ShowWindow + SetWindowPos，因为有些 Windows 终端
+    宿主会把新分配的控制台启动为隐藏状态。
     """
     global _console_freed
     if not _is_windows():
@@ -80,13 +82,30 @@ def ensure_console_allocated() -> bool:
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
+        user32 = ctypes.windll.user32
         if kernel32.GetConsoleWindow():
             return False  # 已有控制台
-        if kernel32.AllocConsole():
-            _console_freed = False
-            _rebind_stdio_to_console()
-            log.debug("[console] 已 AllocConsole（新分配控制台）")
-            return True
+        if not kernel32.AllocConsole():
+            log.warning("[console] AllocConsole 返回 0（失败）")
+            return False
+        _console_freed = False
+        _rebind_stdio_to_console()
+
+        # 强制让新分配的窗口可见并提到前台
+        hwnd = kernel32.GetConsoleWindow()
+        if hwnd:
+            # 先恢复任务栏样式
+            ex = user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
+            user32.SetWindowLongW(hwnd, _GWL_EXSTYLE,
+                                  (ex & ~_WS_EX_TOOLWINDOW) | _WS_EX_APPWINDOW)
+            user32.ShowWindow(hwnd, _SW_SHOW)
+            user32.SetWindowPos(
+                hwnd, 0, 0, 0, 0, 0,
+                _SWP_NOMOVE | _SWP_NOSIZE | _SWP_NOZORDER
+                | _SWP_SHOWWINDOW | _SWP_FRAMECHANGED,
+            )
+        log.debug("[console] 已 AllocConsole + ShowWindow")
+        return True
     except Exception as e:
         log.warning(f"[console] AllocConsole 失败: {e}")
     return False

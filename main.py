@@ -35,7 +35,10 @@ import ctypes.wintypes
 import tkinter as tk
 
 # ==================== 日志配置 ====================
-LOG_DIR = os.path.dirname(os.path.abspath(__file__))
+# 日志放在用户主目录的 .aram_tool/，打包版（onefile）的临时目录退出会被清，
+# 必须用持久化目录才能事后查日志
+LOG_DIR = os.path.join(os.path.expanduser("~"), ".aram_tool")
+os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "aram_debug.log")
 
 logging.basicConfig(

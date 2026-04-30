@@ -36,9 +36,11 @@ OVERLAY_FONT_SIZE = 11
 OVERLAY_OPACITY = 0.92
 
 # ==================== 截图配置 ====================
-SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), "screenshots")
+# 持久化数据放用户主目录（打包版临时目录会被清）
+APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".aram_tool")
+SCREENSHOT_DIR = os.path.join(APP_DATA_DIR, "screenshots")
 
 # ==================== ApexLol 数据增强 ====================
-APEXLOL_ENABLED = True                 
-APEXLOL_CACHE_DIR = os.path.join(os.path.dirname(__file__), "apexlol_cache")
+APEXLOL_ENABLED = True
+APEXLOL_CACHE_DIR = os.path.join(APP_DATA_DIR, "apexlol_cache")
 APEXLOL_CACHE_TTL_DAYS = 7             

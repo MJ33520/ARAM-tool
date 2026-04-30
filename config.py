@@ -18,6 +18,12 @@ import sys
 USER_SETTINGS_DIR = os.path.join(os.path.expanduser("~"), ".aram_tool")
 USER_SETTINGS_PATH = os.path.join(USER_SETTINGS_DIR, "settings.json")
 
+# 应用持久数据目录：所有跨次运行需保留的状态都放这里
+# 打包版（PyInstaller --onefile）每次启动会把代码解到 %TEMP%\_MEIxxxx，那个目录
+# 在退出后会被清空——不能用 os.path.dirname(__file__) 存数据。
+APP_DATA_DIR = USER_SETTINGS_DIR
+os.makedirs(APP_DATA_DIR, exist_ok=True)
+
 
 def _load_user_settings() -> dict:
     if not os.path.exists(USER_SETTINGS_PATH):
@@ -186,14 +192,18 @@ OVERLAY_FONT_SIZE = 11             # 字体大小
 OVERLAY_OPACITY = 0.92             # 窗口不透明度 (0.0 ~ 1.0)
 
 # ==================== 截图配置 ====================
-SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), "screenshots")
+SCREENSHOT_DIR = os.path.join(APP_DATA_DIR, "screenshots")
 os.makedirs(SCREENSHOT_DIR, exist_ok=True)
 
 # ==================== ApexLol 数据增强 ====================
 APEXLOL_ENABLED = True                 # 是否启用 apexlol.info 数据增强
-APEXLOL_CACHE_DIR = os.path.join(os.path.dirname(__file__), "apexlol_cache")
+APEXLOL_CACHE_DIR = os.path.join(APP_DATA_DIR, "apexlol_cache")
 APEXLOL_CACHE_TTL_DAYS = 7             # 缓存过期天数
 os.makedirs(APEXLOL_CACHE_DIR, exist_ok=True)
+
+# ==================== 日志路径 ====================
+# 给 main.py 用；放在 APP_DATA_DIR 下，打包版退出后日志不会被清掉
+LOG_FILE = os.path.join(APP_DATA_DIR, "aram_debug.log")
 
 # ==================== Prompt 配置 ====================
 from lang import STRINGS, PROMPTS
