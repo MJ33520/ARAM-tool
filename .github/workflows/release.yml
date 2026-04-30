@@ -33,20 +33,21 @@ jobs:
         shell: pwsh
         run: |
           if ($env:GITHUB_REF -like 'refs/tags/v*') {
-            # 正式版：v-tag
+            # 正式版：v-tag → 唯一稳定 release，标记 latest
             $tag = $env:GITHUB_REF_NAME
             $name = "ARAM-Assistant $tag"
             $prerelease = 'false'
             $makeLatest = 'true'
             $zipVer = $tag
           } else {
-            # 滚动 dev：固定 tag 'dev-latest'，每次覆盖
+            # 每次 push → 独立 dev release，tag = dev-build-{run_number}
             $short = $env:GITHUB_SHA.Substring(0, 7)
-            $tag = 'dev-latest'
-            $name = "Dev Build ($short)"
+            $build = "${{ github.run_number }}"
+            $tag = "dev-build-$build"
+            $name = "Dev Build #$build ($short)"
             $prerelease = 'true'
             $makeLatest = 'false'
-            $zipVer = "dev-$short"
+            $zipVer = "dev-$build-$short"
           }
           Write-Host "tag=$tag  zipVer=$zipVer  prerelease=$prerelease"
           "TAG_NAME=$tag"         | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -97,8 +98,9 @@ jobs:
           generate_release_notes: true
           body: |
             **Tag:** `${{ env.TAG_NAME }}`
-            **Commit:** `${{ github.sha }}`
-            **Built from:** `${{ github.ref_name }}`
+            **Commit:** [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+            **Branch / Ref:** `${{ github.ref_name }}`
+            **Run:** [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
             ---
 
