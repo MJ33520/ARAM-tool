@@ -157,19 +157,7 @@ class App:
                         font=("Microsoft YaHei UI", 11))
         sep_fix.pack(side=tk.LEFT)
 
-        # 🔄 数据（ApexLol）
-        if APEXLOL_ENABLED:
-            sep3 = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
-                            font=("Microsoft YaHei UI", 11))
-            sep3.pack(side=tk.LEFT)
-
-            self.btn_data = tk.Button(
-                btn_frame, text=T("btn_data"), command=self._on_update_data,
-                bg="#1a1a2e", fg="#66ff66", activebackground="#2a2a4e",
-                activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
-                padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-            )
-            self.btn_data.pack(side=tk.LEFT, padx=(1, 2))
+        # （🔄 数据按钮已移到 ⚙️ 设置 → ApexLol 数据缓存）
 
         # ⚙️ 设置
         sep_set = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
@@ -210,8 +198,6 @@ class App:
                         sep2, sep_fix, sep_set, self.btn_settings,
                         sep_exit, self.btn_exit,
                         self.status_label, btn_frame]
-        if APEXLOL_ENABLED:
-            drag_widgets.extend([sep3, self.btn_data])
         for w in drag_widgets:
             w.bind("<Button-3>", self._start_drag)
             w.bind("<B3-Motion>", self._on_drag)
@@ -713,43 +699,62 @@ class App:
 
         threading.Thread(target=_bg, daemon=True, name="ApexLolAutoRefresh").start()
 
-    def _on_update_data(self):
-        """点击 🔄 数据按钮：在后台爬取 apexlol.info 数据。"""
-        if hasattr(self, '_data_updating') and self._data_updating:
-            return
-        self._data_updating = True
+    def trigger_data_update(self, extra_progress=None, on_done=None) -> bool:
+        """手动/外部触发的 ApexLol 数据更新（在后台线程跑，更新浮动栏 status_label）。
 
-        self.btn_data.configure(text=T("btn_data_updating"), state=tk.DISABLED)
+        Args:
+            extra_progress: 可选回调 fn(current, total, champion_name)，由调用方
+                （如设置对话框）注册以同步显示进度。回调在主线程被调用。
+            on_done: 可选回调 fn(success: bool)，更新结束后在主线程调用一次。
+
+        Returns:
+            True 表示已成功启动更新；False 表示已有更新在跑被忽略。
+        """
+        if getattr(self, "_data_updating", False):
+            return False
+        self._data_updating = True
         self.status_label.configure(text=T("status_data_updating"))
 
-        thread = threading.Thread(target=self._run_data_update, daemon=True)
-        thread.start()
+        def _run():
+            ok = False
+            try:
+                from apexlol_scraper import scrape_all_champions
+                from apexlol_data import load_cache
 
-    def _run_data_update(self):
-        """后台执行数据爬取。"""
-        try:
-            from apexlol_scraper import scrape_all_champions
-            from apexlol_data import load_cache
+                def progress(current, total, name):
+                    def _update():
+                        self.status_label.configure(
+                            text=T("status_data_progress").format(current, total, name))
+                        if extra_progress is not None:
+                            try:
+                                extra_progress(current, total, name)
+                            except Exception:
+                                pass
+                    self.root.after(0, _update)
 
-            def progress(current, total, name):
+                scrape_all_champions(APEXLOL_CACHE_DIR, progress_callback=progress)
+                load_cache(APEXLOL_CACHE_DIR)
+                ok = True
+
                 self.root.after(0, lambda: self.status_label.configure(
-                    text=T("status_data_progress").format(current, total, name)))
+                    text=T("status_data_done")))
+                log.info("[ApexLol] [OK] 数据更新完成")
 
-            scrape_all_champions(APEXLOL_CACHE_DIR, progress_callback=progress)
-            load_cache(APEXLOL_CACHE_DIR)
+            except Exception as e:
+                log.error(f"[ApexLol] 数据更新失败: {e}")
+                self.root.after(0, lambda: self.status_label.configure(
+                    text=T("status_data_error")))
+            finally:
+                self._data_updating = False
+                if on_done is not None:
+                    self.root.after(0, lambda: on_done(ok))
 
-            self.root.after(0, lambda: self.status_label.configure(
-                text=T("status_data_done")))
-            log.info("[ApexLol] [OK] 数据更新完成")
+        threading.Thread(target=_run, daemon=True, name="ApexLolUpdate").start()
+        return True
 
-        except Exception as e:
-            log.error(f"[ApexLol] 数据更新失败: {e}")
-            self.root.after(0, lambda: self.status_label.configure(
-                text=T("status_data_error")))
-        finally:
-            self._data_updating = False
-            self.root.after(0, lambda: self.btn_data.configure(
-                text=T("btn_data"), state=tk.NORMAL))
+    def is_data_updating(self) -> bool:
+        """供设置对话框查询当前是否有更新在跑。"""
+        return getattr(self, "_data_updating", False)
 
     # ==================== 显示全局攻略 ====================
     def _show_global_result(self, content: str):
@@ -1114,7 +1119,7 @@ class App:
     def _on_settings(self):
         try:
             from settings_ui import open_settings_dialog
-            open_settings_dialog(self.root)
+            open_settings_dialog(self.root, self)
         except Exception as e:
             log.error(f"[设置] 打开失败: {e}")
             from tkinter import messagebox
