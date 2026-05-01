@@ -66,20 +66,19 @@ jobs:
             --hidden-import google.genai `
             main.py
 
-      - name: Stage release files
+      - name: Stage release file
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path release -Force | Out-Null
-          Copy-Item dist/ARAM-Assistant.exe release/
-          $zipPath = "ARAM-Assistant-${{ env.ZIP_VERSION }}-windows.zip"
-          Compress-Archive -Path release/* -DestinationPath $zipPath -Force
-          Write-Host "Zip: $zipPath"
+          # 直接把 exe 重命名带上版本号——release assets 里点一下就下载，免解压
+          $exePath = "ARAM-Assistant-${{ env.ZIP_VERSION }}.exe"
+          Move-Item dist/ARAM-Assistant.exe $exePath
+          Write-Host "Exe: $exePath"
 
       - name: Upload artifact (always)
         uses: actions/upload-artifact@v4
         with:
-          name: ARAM-Assistant-${{ env.ZIP_VERSION }}-windows
-          path: ARAM-Assistant-*.zip
+          name: ARAM-Assistant-${{ env.ZIP_VERSION }}
+          path: ARAM-Assistant-*.exe
           retention-days: 30
 
       - name: Create / update release
@@ -87,7 +86,7 @@ jobs:
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: ${{ env.RELEASE_NAME }}
-          files: ARAM-Assistant-*.zip
+          files: ARAM-Assistant-*.exe
           prerelease: ${{ env.IS_PRERELEASE }}
           make_latest: ${{ env.MAKE_LATEST }}
           generate_release_notes: true
@@ -99,6 +98,6 @@ jobs:
 
             ---
 
-            下载 `ARAM-Assistant-*-windows.zip`，解压后双击 `ARAM-Assistant.exe` 即可运行。无需安装 Python。
+            下载下方的 `ARAM-Assistant-*.exe`，直接双击即可运行。无需安装 Python，无需解压。
 
             首次启动：点浮动栏 `⚙️` 按钮配置 LLM 提供商和 API Key。
