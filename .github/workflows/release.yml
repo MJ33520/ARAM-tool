@@ -2,8 +2,8 @@ name: Build and Release
 
 on:
   push:
-    branches: ['**']   # 每次 push 任意分支 → 滚动 dev release
-    tags: ['v*']       # 推 v* tag → 正式版 release
+    branches: ['**']   # 每次 push 任意分支 → v{run_number} 自增正式版，标 latest
+    tags: ['v*']       # 推 v* tag → 用 tag 名作为正式版 release
   workflow_dispatch:
 
 permissions:
@@ -33,28 +33,26 @@ jobs:
         shell: pwsh
         run: |
           if ($env:GITHUB_REF -like 'refs/tags/v*') {
-            # 正式版：v-tag → 唯一稳定 release，标记 latest
+            # 手工 v 语义化 tag（如 v1.0.0）：作为正式版
             $tag = $env:GITHUB_REF_NAME
             $name = "ARAM-Assistant $tag"
-            $prerelease = 'false'
-            $makeLatest = 'true'
             $zipVer = $tag
           } else {
-            # 每次 push → 独立 dev release，tag = dev-build-{run_number}
+            # 普通 push：用 v{run_number} 自增版本号
             $short = $env:GITHUB_SHA.Substring(0, 7)
-            $build = "${{ github.run_number }}"
-            $tag = "dev-build-$build"
-            $name = "Dev Build #$build ($short)"
-            $prerelease = 'true'
-            $makeLatest = 'false'
-            $zipVer = "dev-$build-$short"
+            $tag = "v${{ github.run_number }}"
+            $name = "ARAM-Assistant $tag ($short)"
+            $zipVer = $tag
           }
-          Write-Host "tag=$tag  zipVer=$zipVer  prerelease=$prerelease"
-          "TAG_NAME=$tag"         | Out-File -FilePath $env:GITHUB_ENV -Append
-          "RELEASE_NAME=$name"    | Out-File -FilePath $env:GITHUB_ENV -Append
+          # 两条路径都按"正式版 + latest"处理
+          $prerelease = 'false'
+          $makeLatest = 'true'
+          Write-Host "tag=$tag  zipVer=$zipVer  prerelease=$prerelease  latest=$makeLatest"
+          "TAG_NAME=$tag"             | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RELEASE_NAME=$name"        | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ZIP_VERSION=$zipVer"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "IS_PRERELEASE=$prerelease" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "MAKE_LATEST=$makeLatest" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "ZIP_VERSION=$zipVer"   | Out-File -FilePath $env:GITHUB_ENV -Append
+          "MAKE_LATEST=$makeLatest"   | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build with PyInstaller
         shell: pwsh
@@ -73,9 +71,6 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path release -Force | Out-Null
           Copy-Item dist/ARAM-Assistant.exe release/
-          Copy-Item README.md release/ -ErrorAction SilentlyContinue
-          Copy-Item README_EN.md release/ -ErrorAction SilentlyContinue
-          Copy-Item CUSTOM_LLM_SETUP.md release/ -ErrorAction SilentlyContinue
           $zipPath = "ARAM-Assistant-${{ env.ZIP_VERSION }}-windows.zip"
           Compress-Archive -Path release/* -DestinationPath $zipPath -Force
           Write-Host "Zip: $zipPath"
