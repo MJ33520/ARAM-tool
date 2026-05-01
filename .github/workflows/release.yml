@@ -101,3 +101,28 @@ jobs:
             下载下方的 `ARAM-Assistant-*.exe`，直接双击即可运行。无需安装 Python，无需解压。
 
             首次启动：点浮动栏 `⚙️` 按钮配置 LLM 提供商和 API Key。
+
+      - name: Prune old auto-releases (keep newest 10)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 只清理 auto-generated 的 v{N} 数字版本，保留 v1.0.0 / v0.5.0 等
+          # 语义化 tag —— 那是用户手动推的里程碑版本，不应该被自动脚本删
+          $all = gh release list --limit 1000 --json tagName,createdAt |
+                 ConvertFrom-Json | Sort-Object createdAt -Descending
+
+          $autoReleases = $all | Where-Object { $_.tagName -match '^v\d+$' }
+          $toDelete = @($autoReleases | Select-Object -Skip 10)
+
+          Write-Host "Auto-release 总数: $($autoReleases.Count) / 阈值 10"
+          if ($toDelete.Count -eq 0) {
+            Write-Host "无需清理"
+            exit 0
+          }
+
+          Write-Host "将删除 $($toDelete.Count) 个旧 release（含 tag）:"
+          foreach ($r in $toDelete) {
+            Write-Host "  -> $($r.tagName)"
+            gh release delete $r.tagName --yes --cleanup-tag
+          }
