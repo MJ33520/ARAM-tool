@@ -4,3 +4,8 @@ pynput
 Pillow
 requests
 beautifulsoup4
+psutil
+# 以下 OCR 依赖目前为可选（代码中已废弃 OCR 中间层，海克斯分析直接走 LLM 视觉）
+# 如需启用 apexlol_data.ocr_hextech_* 路径，再手动安装：
+# rapidocr_onnxruntime
+# opencv-python

@@ -39,14 +39,18 @@ def _is_retryable(exc: Exception) -> bool:
         "unexpected_eof" in msg
         or "ssleoferror" in msg
         or "eof occurred" in msg
+        or " eof" in msg            # OpenAI 兼容网关常把上游 "Post ... EOF" 包成 500 透传
         or "connection reset" in msg
         or "connection aborted" in msg
         or "read timed out" in msg
         # HTTP 层瞬态状态（服务/网关过载、限流、上游超时）
         or " 429" in msg or "429:" in msg
+        or " 500" in msg or "500:" in msg     # 上游断流 / 网关临时故障
         or " 502" in msg or "502:" in msg
         or " 503" in msg or "503:" in msg
         or " 504" in msg or "504:" in msg
+        or "internal_server_error" in msg     # OpenAI 错误体的 type/code 字段
+        or "server_error" in msg
         or "service unavailable" in msg
         or "bad gateway" in msg
         or "gateway timeout" in msg

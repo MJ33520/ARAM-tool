@@ -15,6 +15,7 @@ import time as _time
 
 from config import (
     APEXLOL_ENABLED, LANGUAGE,
+    HEXTECH_IMAGE_TIMEOUT, HEXTECH_TEXT_TIMEOUT,
 )
 from llm_client import get_client
 
@@ -157,7 +158,7 @@ def analyze_hextech_choice(png_bytes: bytes, global_context: str,
             contents=contents,
             temperature=0.2,
             label="海克斯",
-            hard_timeout=8.0,  # 8秒硬超时
+            hard_timeout=HEXTECH_IMAGE_TIMEOUT,  # 默认 20s，慢网关可在 settings.json 调高
             max_retries=1,     # 防止卡死停摆，只重试一次
         )
         log.info("[LLM] 海克斯选择分析完成")
@@ -218,7 +219,7 @@ def analyze_hextech_text(ocr_names: list, hextech_history: list,
             contents=contents,
             temperature=0.2,
             label="海克斯文字",
-            hard_timeout=5.0,
+            hard_timeout=HEXTECH_TEXT_TIMEOUT,  # 默认 12s
             max_retries=1,
         )
         log.info("[LLM] 纯文字海克斯分析完成")

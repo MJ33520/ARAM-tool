@@ -68,6 +68,23 @@ def _pick_bool(env_key: str, settings_key: str, default: bool = True) -> bool:
     return default
 
 
+def _pick_float(env_key: str, settings_key: str, default: float) -> float:
+    """按 env > settings > default 读 float 值。无效输入静默回退到默认。"""
+    v = os.environ.get(env_key)
+    if v and v.strip():
+        try:
+            return float(v.strip())
+        except ValueError:
+            pass
+    sv = _USER.get(settings_key)
+    if sv is not None:
+        try:
+            return float(sv)
+        except (ValueError, TypeError):
+            pass
+    return default
+
+
 # ==================== 语言配置 ====================
 # "zh" = 中文 (Chinese)  "en" = English
 LANGUAGE = _pick("LANGUAGE", "language", "zh").lower() or "zh"
@@ -92,9 +109,15 @@ CUSTOM_API_KEY = _pick("CUSTOM_API_KEY", "custom_api_key", "")
 CUSTOM_MODEL = _pick("CUSTOM_MODEL", "custom_model", "")
 CUSTOM_API_ENDPOINT = _pick("CUSTOM_API_ENDPOINT", "custom_api_endpoint", "").rstrip("/")
 
-# ==================== 控制台（DOS 窗口）显隐 ====================
-# 启动时显示 Windows cmd/控制台窗口；False 则隐藏（适合打包成桌面快捷方式）
-SHOW_CONSOLE = _pick_bool("SHOW_CONSOLE", "show_console", True)
+
+# ==================== 海克斯分析硬超时（秒） ====================
+# 海克斯选择界面有倒计时，必须设硬超时防卡死。
+# 但太短会导致慢网关 / vision 模型还没出结果就被掐。
+# 默认值已比 v1 (8s/5s) 显著放宽，慢网关用户可继续调高：
+#   - 环境变量: set HEXTECH_IMAGE_TIMEOUT=25
+#   - 或 ~/.aram_tool/settings.json: { "hextech_image_timeout": 25 }
+HEXTECH_IMAGE_TIMEOUT = _pick_float("HEXTECH_IMAGE_TIMEOUT", "hextech_image_timeout", 20.0)
+HEXTECH_TEXT_TIMEOUT = _pick_float("HEXTECH_TEXT_TIMEOUT", "hextech_text_timeout", 12.0)
 
 
 # ==================== 配置校验 ====================
@@ -137,7 +160,6 @@ _RELOADABLE_KEYS = (
     "GEMINI_API_KEY", "GEMINI_MODEL", "GEN_AI_ENDPOINT",
     "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_API_ENDPOINT",
     "CUSTOM_API_KEY", "CUSTOM_MODEL", "CUSTOM_API_ENDPOINT",
-    "SHOW_CONSOLE",
 )
 
 
@@ -151,7 +173,7 @@ def reload() -> dict:
     global _USER, LLM_PROVIDER, GEMINI_API_KEY, GEMINI_MODEL, GEN_AI_ENDPOINT
     global OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_ENDPOINT
     global CUSTOM_API_KEY, CUSTOM_MODEL, CUSTOM_API_ENDPOINT
-    global LANGUAGE, LLM_ENABLED, SHOW_CONSOLE
+    global LANGUAGE, LLM_ENABLED
 
     old = {k: globals()[k] for k in (_RELOADABLE_KEYS + ("LANGUAGE",))}
 
@@ -169,7 +191,6 @@ def reload() -> dict:
     CUSTOM_API_KEY = _pick("CUSTOM_API_KEY", "custom_api_key", "")
     CUSTOM_MODEL = _pick("CUSTOM_MODEL", "custom_model", "")
     CUSTOM_API_ENDPOINT = _pick("CUSTOM_API_ENDPOINT", "custom_api_endpoint", "").rstrip("/")
-    SHOW_CONSOLE = _pick_bool("SHOW_CONSOLE", "show_console", True)
 
     ok, _ = _check_llm_config()
     LLM_ENABLED = ok

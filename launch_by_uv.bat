@@ -34,21 +34,8 @@ echo [INFO] uv environment already initialized.
 goto :RUN_APP
 
 :RUN_APP
-:: 3. 读取 show_console 设置（默认 true）；false 时用 pythonw 完全无 DOS 启动
-set "SHOW_CONSOLE=true"
-set "SETTINGS=%USERPROFILE%\.aram_tool\settings.json"
-if exist "%SETTINGS%" (
-    for /f "usebackq delims=" %%i in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $j = Get-Content -Raw '%SETTINGS%' | ConvertFrom-Json; if ($null -ne $j.show_console) { $j.show_console.ToString().ToLower() } else { 'true' } } catch { 'true' }"`) do (
-        set "SHOW_CONSOLE=%%i"
-    )
-)
-
-if /i "%SHOW_CONSOLE%"=="false" (
-    echo [INFO] show_console=false, launching with pythonw (no DOS window)...
-    start "" uv run --python pythonw main.py
-    exit /b 0
-)
-
-echo [INFO] Starting the application...
-uv run main.py
-pause
+:: 直接用 pythonw 启动，无 DOS 窗口
+:: 想看实时日志或在控制台直接输入英雄名时，改用：uv run main.py
+echo [INFO] Starting the application (no DOS window)...
+start "" uv run --python pythonw main.py
+exit /b 0

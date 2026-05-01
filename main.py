@@ -13,11 +13,6 @@ import os
 import sys
 import io
 
-# 打包版（--noconsole）启动时无控制台；按 settings.json 的 show_console 值
-# 决定要不要 AllocConsole。必须在其它 import 之前做，让启动期日志能输出。
-from console_utils import bootstrap_from_settings
-bootstrap_from_settings()
-
 # Force utf-8 for stdout and stderr to prevent ascii encoding errors on Windows
 if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
     if hasattr(sys.stdout, 'buffer'):
@@ -41,13 +36,15 @@ LOG_DIR = os.path.join(os.path.expanduser("~"), ".aram_tool")
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "aram_debug.log")
 
+# pythonw / --noconsole 启动时 sys.stdout 可能为 None，直接给 StreamHandler 会崩
+_log_handlers = [logging.FileHandler(LOG_FILE, encoding="utf-8", mode="a")]
+if sys.stdout is not None:
+    _log_handlers.append(logging.StreamHandler(sys.stdout))
+
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8", mode="a"),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=_log_handlers,
 )
 log = logging.getLogger("ARAM")
 
@@ -58,15 +55,56 @@ from config import (
     OVERLAY_TITLE_COLOR, OVERLAY_WIDTH, OVERLAY_MAX_HEIGHT,
     OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE, OVERLAY_OPACITY, T,
     APEXLOL_ENABLED, APEXLOL_CACHE_DIR, APEXLOL_CACHE_TTL_DAYS,
-    SHOW_CONSOLE,
 )
-from console_utils import set_console_visible
 
 # 状态
 _is_analyzing = False
 _is_hextech_analyzing = False
 _global_strategy = None       # 全局攻略文本（缓存）
 _hextech_history = []          # 已选海克斯列表
+
+# 状态互斥锁：保护 _is_analyzing / _is_hextech_analyzing 的 check-and-set，
+# 防止 LCU 监控线程、stdin 监听线程、UI 主线程同时通过 "if not busy" 守卫
+_state_lock = threading.Lock()
+
+
+def _try_lock_global() -> bool:
+    """原子地尝试占用全局分析槽。返回 True 表示成功；False 表示已有任务在跑。"""
+    global _is_analyzing
+    with _state_lock:
+        if _is_analyzing or _is_hextech_analyzing:
+            return False
+        _is_analyzing = True
+        return True
+
+
+def _unlock_global() -> None:
+    """释放全局分析槽。"""
+    global _is_analyzing
+    with _state_lock:
+        _is_analyzing = False
+
+
+def _try_lock_hextech() -> bool:
+    """原子地尝试占用海克斯分析槽。"""
+    global _is_hextech_analyzing
+    with _state_lock:
+        if _is_hextech_analyzing or _is_analyzing:
+            return False
+        _is_hextech_analyzing = True
+        return True
+
+
+def _unlock_hextech() -> None:
+    """释放海克斯分析槽。"""
+    global _is_hextech_analyzing
+    with _state_lock:
+        _is_hextech_analyzing = False
+
+
+def _is_busy() -> bool:
+    """快速读取是否有分析任务在跑（不加锁，仅用于不严格的 UI 提示）。"""
+    return _is_analyzing or _is_hextech_analyzing
 
 
 class App:
@@ -198,30 +236,64 @@ class App:
         if APEXLOL_ENABLED:
             self._init_apexlol_cache()
 
-        # 启动命令行输入监听线程
-        t_input = threading.Thread(target=self._console_input_listener, daemon=True, name="ConsoleInput")
-        t_input.start()
+        # 启动命令行输入监听线程（仅在有 tty 时启用——
+        # pythonw / 打包 --noconsole 启动 sys.stdin 为 None 或非 tty，readline() 会立即崩）
+        if sys.stdin is not None and sys.stdin.isatty():
+            t_input = threading.Thread(target=self._console_input_listener, daemon=True, name="ConsoleInput")
+            t_input.start()
 
         # 启动 LCU 自动对局监控线程
         t_lcu = threading.Thread(target=self._lcu_live_monitor, daemon=True, name="LCUMonitor")
         t_lcu.start()
 
+        # 启动全局热键监听 (Ctrl+F12 切换攻略窗口) — 游戏全屏也能触发
+        self._hotkey_listener = None
+        self._start_global_hotkey()
+
+    def _start_global_hotkey(self):
+        """启动 pynput 全局热键监听。失败不致命，仅记录日志。
+
+        tkinter 的 bind 只在窗口聚焦时触发，游戏全屏时按 Ctrl+F12 不会响应；
+        pynput 的 GlobalHotKeys 通过系统级钩子能在任意前台窗口下触发。
+        """
+        try:
+            from pynput import keyboard
+        except ImportError as e:
+            log.warning(f"[hotkey] pynput 未安装，全局热键不可用: {e}")
+            return
+
+        def _on_toggle():
+            # tkinter 不支持跨线程操作，dispatch 回主线程
+            try:
+                self.root.after(0, self._on_show)
+            except (tk.TclError, RuntimeError):
+                pass
+
+        try:
+            self._hotkey_listener = keyboard.GlobalHotKeys({'<ctrl>+<f12>': _on_toggle})
+            self._hotkey_listener.daemon = True
+            self._hotkey_listener.start()
+            log.info("[hotkey] 全局热键 Ctrl+F12 已启用")
+        except Exception as e:
+            log.warning(f"[hotkey] 启动失败: {e}")
+            self._hotkey_listener = None
+
     def _lcu_live_monitor(self):
         """后台轮询 LCU API，在加载界面即自动触发分析。"""
-        global _is_analyzing, _is_hextech_analyzing, _global_strategy, _hextech_history
+        global _global_strategy, _hextech_history
         _match_analyzed_flag = False
         from lcu_client import get_loading_screen_rosters, get_gameflow_phase
         import time
 
-        
+
         while True:
             try:
                 phase = get_gameflow_phase()
-                
+
                 # 在加载界面 (InProgress 或 GameStart) 进行秒级前瞻分析
                 # 兼容 WeGame 无畏契约/极速模式：在此模式下客户端可能会在 GameStart 后立即变成 None，以节省内存
                 if phase in ("InProgress", "GameStart"):
-                    if not _match_analyzed_flag and not _is_analyzing and not _is_hextech_analyzing:
+                    if not _match_analyzed_flag and not _is_busy():
                         # 先不传 override，让 LCU 返回真实英雄
                         rosters = get_loading_screen_rosters()
                         if rosters:
@@ -262,14 +334,13 @@ class App:
 
     def _run_lcu_auto_analysis(self, rosters: dict, is_correction: bool = False):
         """执行 LCU 纯文本全量分析（无截图界面）"""
-        global _is_analyzing, _global_strategy, _hextech_history
-        if _is_analyzing:
+        global _global_strategy, _hextech_history
+        if not _try_lock_global():
             return
-        
-        _is_analyzing = True
+
         self._detected_champion = rosters.get("my_champion") # 记录当前对局识别到的英雄
         self.status_label.configure(text=T("status_lcu_analyzing"))
-        
+
         # 弹窗提示
         self._on_show()
         if self.overlay_text:
@@ -277,24 +348,24 @@ class App:
             self.overlay_text.delete(1.0, tk.END)
             self.overlay_text.insert(tk.END, f"🚀 正在基于客户端全量数据极速生成终极阵容攻略，请稍候...")
             self.overlay_text.configure(state=tk.DISABLED)
-            
+
         def _bg_task():
-            global _is_analyzing, _global_strategy, _hextech_history
+            global _global_strategy, _hextech_history
             try:
                 from gemini_analyzer import analyze_lcu_rosters
                 result = analyze_lcu_rosters(rosters, _hextech_history)
-                
+
                 _global_strategy = result
-                
+
                 # 在主线程中更新显示
                 self.root.after(0, lambda: self._show_global_result(result))
             except Exception as e:
                 log.error(f"LCU 分析出错: {e}")
                 self.root.after(0, lambda: self._show_global_result(f"❌ LCU 分析出错:\n{e}"))
             finally:
-                _is_analyzing = False
+                _unlock_global()
                 self.root.after(0, lambda: self.status_label.configure(text=T("status_done")))
-                
+
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
 
@@ -318,7 +389,7 @@ class App:
                     continue
                 
                 # 检查是否正在分析
-                if _is_analyzing or _is_hextech_analyzing:
+                if _is_busy():
                     print(f"[{_time.strftime('%H:%M:%S')}] ⚠️ 当前已有分析任务在进行中，请稍后再试。")
                     continue
                 
@@ -336,13 +407,12 @@ class App:
 
     def _run_quick_guide(self, champion_name: str):
         """执行极速前瞻分析（无截图界面）"""
-        global _is_analyzing, _global_strategy
-        if _is_analyzing:
+        global _global_strategy
+        if not _try_lock_global():
             return
-        
-        _is_analyzing = True
+
         self.status_label.configure(text=T("status_quick_analyzing"))
-        
+
         # 弹窗显示前瞻正在进行
         self._on_show()
         if self.overlay_text:
@@ -350,33 +420,33 @@ class App:
             self.overlay_text.delete(1.0, tk.END)
             self.overlay_text.insert(tk.END, f"🚀 正在为您极速生成【{champion_name}】的前瞻攻略，请稍候...")
             self.overlay_text.configure(state=tk.DISABLED)
-            
+
         def _bg_task():
-            global _is_analyzing, _global_strategy, _hextech_history
+            global _global_strategy, _hextech_history
             try:
                 from gemini_analyzer import analyze_champion_quick_guide
                 result = analyze_champion_quick_guide(champion_name)
-                
+
                 # 将该攻略存入全局变量，方便用户在进入游戏前随时查看
                 _global_strategy = result
                 _hextech_history = []
-                
+
                 # 在主线程中更新显示
                 self.root.after(0, lambda: self._show_global_result(result))
             except Exception as e:
                 log.error(f"极速分析出错: {e}")
                 self.root.after(0, lambda: self._show_global_result(f"❌ 分析出错:\n{e}"))
             finally:
-                _is_analyzing = False
+                _unlock_global()
                 self.root.after(0, self._restore_ui_state)
-                
+
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
 
     def _run_pure_data_guide(self, champion_name: str):
         """纯 ApexLol 数据查表模式（无需 AI 也无需 LCU），直接展示海克斯方案。"""
-        global _is_analyzing
-        _is_analyzing = True
+        if not _try_lock_global():
+            return
         self.status_label.configure(text="📊 纯数据模式查表中...")
 
         def _bg_task():
@@ -402,7 +472,7 @@ class App:
                 log.error(f"纯数据查表失败: {e}")
                 self.root.after(0, lambda: self._show_global_result(f"❌ 纯数据查表失败:\n{e}"))
             finally:
-                _is_analyzing = False
+                _unlock_global()
                 self.root.after(0, self._restore_ui_state)
 
         t = threading.Thread(target=_bg_task, daemon=True)
@@ -410,8 +480,7 @@ class App:
 
     def _on_fix(self):
         """手动指定英雄：3级降级策略 — LCU全局 → AI极速前瞻 → 纯数据查表"""
-        global _is_analyzing
-        if _is_analyzing:
+        if _is_busy():
             return
         import tkinter.simpledialog as sd
         self.root.lift()
@@ -455,16 +524,16 @@ class App:
 
     # ==================== 海克斯分析 ====================
     def _on_hextech(self):
-        global _is_hextech_analyzing, _global_strategy
-        if _is_hextech_analyzing:
-            return
+        global _global_strategy
 
         # 需要先有全局攻略
         if _global_strategy is None:
             self.status_label.configure(text=T("hextech_no_global"))
             return
 
-        _is_hextech_analyzing = True
+        # 原子获取海克斯分析槽（同时挡掉全局分析在跑的情况）
+        if not _try_lock_hextech():
+            return
 
         self.btn_hextech.configure(text=T("btn_hextech_analyzing"), state=tk.DISABLED)
         self.status_label.configure(text=T("status_hextech_analyzing"))
@@ -485,7 +554,6 @@ class App:
         thread.start()
 
     def _run_hextech_analysis(self):
-        global _is_hextech_analyzing
         try:
             t0 = _time.time()
             log.info("⚡ 开始海克斯分析")
@@ -518,7 +586,7 @@ class App:
             self.root.after(0, lambda: self._show_hextech_result(
                 f"❌ 海克斯分析失败\n\n{str(e)}"))
         finally:
-            _is_hextech_analyzing = False
+            _unlock_hextech()
             self.root.after(0, self._restore_hextech_btn)
 
     def _restore_hextech_btn(self):
@@ -1054,6 +1122,13 @@ class App:
 
     def _on_exit(self):
         log.info("[退出] 用户点击退出按钮")
+        # 先停掉全局热键监听，避免守护线程残留
+        if getattr(self, "_hotkey_listener", None) is not None:
+            try:
+                self._hotkey_listener.stop()
+            except Exception:
+                pass
+            self._hotkey_listener = None
         try:
             print(f"\n{T('console_bye')}")
         except Exception:
@@ -1097,8 +1172,6 @@ def main():
 
     log.info(T("console_started"))
     app = App()
-    # 应用 DOS 窗口显隐偏好（只在 Windows 生效）
-    set_console_visible(SHOW_CONSOLE)
     try:
         app.run()
     except KeyboardInterrupt:
