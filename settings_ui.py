@@ -22,7 +22,7 @@ from tkinter import ttk, messagebox
 import config
 import llm_client
 from config import (
-    USER_SETTINGS_DIR, USER_SETTINGS_PATH, LANGUAGE, LOG_FILE,
+    USER_SETTINGS_DIR, USER_SETTINGS_PATH, LANGUAGE,
     LLM_PROVIDER,
     GEMINI_API_KEY, GEMINI_MODEL, GEN_AI_ENDPOINT,
     OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_ENDPOINT,
@@ -57,8 +57,8 @@ _I18N = {
         "test_ok_msg": "✅ Provider / Model / Key 均可用\n延迟: {latency_ms} ms\n\n返回片段：\n{reply}",
         "test_err_title": "连接失败",
         "test_err_msg": "❌ 测试失败（延迟 {latency_ms} ms）\n\n{error}",
-        "open_log": "📂 打开日志文件",
-        "open_log_err": "无法打开日志文件",
+        "open_config_dir": "📂 打开配置目录",
+        "open_config_dir_err": "无法打开配置目录",
         "apexlol_section": "🎲 ApexLol 数据缓存",
         "apexlol_desc": (
             "本地缓存所有英雄的海克斯符文方案与评级（来源：apexlol.info）。\n"
@@ -103,8 +103,8 @@ _I18N = {
         "test_ok_msg": "✅ Provider / Model / Key all working\nLatency: {latency_ms} ms\n\nReply preview:\n{reply}",
         "test_err_title": "Connection failed",
         "test_err_msg": "❌ Test failed ({latency_ms} ms)\n\n{error}",
-        "open_log": "📂 Open log file",
-        "open_log_err": "Cannot open log file",
+        "open_config_dir": "📂 Open config folder",
+        "open_config_dir_err": "Cannot open config folder",
         "apexlol_section": "🎲 ApexLol data cache",
         "apexlol_desc": (
             "Local cache of every champion's hextech synergies and ratings (source: apexlol.info).\n"
@@ -214,8 +214,8 @@ class SettingsDialog:
                  bg="#1a1a2e", fg="#888899", justify="left",
                  font=("Microsoft YaHei UI", 8)).pack(anchor="w", pady=(2, 0))
 
-        # 打开日志文件入口（替代旧版 DOS 实时日志）
-        tk.Button(notice, text=_t("open_log"), command=self._open_log_file,
+        # 打开配置目录入口（含日志、settings.json、apexlol 缓存）
+        tk.Button(notice, text=_t("open_config_dir"), command=self._open_config_dir,
                   bg="#1a1a2e", fg="#00d4ff", activebackground="#2a2a4e",
                   activeforeground="#33e0ff", relief=tk.FLAT, cursor="hand2",
                   font=("Microsoft YaHei UI", 9), borderwidth=0,
@@ -512,18 +512,18 @@ class SettingsDialog:
             log.info("[设置] 已有更新在跑，按钮保持禁用直到完成")
 
     # ---------- 保存 ----------
-    def _open_log_file(self):
-        """用系统默认应用打开 ~/.aram_tool/aram_debug.log。"""
+    def _open_config_dir(self):
+        """用系统文件管理器打开 ~/.aram_tool/（含 settings.json、aram_debug.log、apexlol 缓存）。"""
         try:
             if hasattr(os, "startfile"):  # Windows
-                os.startfile(LOG_FILE)  # noqa: S606 — 信任本地常量路径
+                os.startfile(USER_SETTINGS_DIR)  # noqa: S606 — 信任本地常量路径
             else:
                 import subprocess
                 opener = "open" if sys.platform == "darwin" else "xdg-open"
-                subprocess.Popen([opener, LOG_FILE])
+                subprocess.Popen([opener, USER_SETTINGS_DIR])
         except Exception as e:
-            log.warning(f"[设置] 打开日志失败: {e}")
-            messagebox.showerror(_t("open_log_err"), str(e), parent=self.win)
+            log.warning(f"[设置] 打开配置目录失败: {e}")
+            messagebox.showerror(_t("open_config_dir_err"), str(e), parent=self.win)
 
     def _on_save(self):
         data = {

@@ -111,46 +111,71 @@ def scrape_champion(champion_id: str) -> dict:
     soup = BeautifulSoup(resp.text, "html.parser")
     synergies = []
 
-    # 查找所有联动卡片
-    cards = soup.select(".interaction-card")
+    # 联动卡片：ApexLol 改版到 Tailwind class 后用 .interaction-card-shell。
+    # 数据字段优先取 data-rich-* 属性（业务字段，比视觉 class 稳定）。
+    cards = soup.select(".interaction-card-shell")
     for card in cards:
         entry = {}
 
-        # 提取海克斯名称（可能有多个）
-        hex_names = [h.get_text(strip=True) for h in card.select(".hex-name")]
-        hex_tiers = [t.get_text(strip=True) for t in card.select(".hex-tier")]
+        # 海克斯名 + 阶级：每张卡左侧有若干 <a class="interaction-card-entity">
+        hex_names = []
+        hex_tiers = []
+        for ent in card.select("a.interaction-card-entity"):
+            name_el = ent.select_one("[data-rich-name]")
+            if name_el and name_el.get("data-rich-name"):
+                hex_names.append(name_el["data-rich-name"])
+            for span in ent.select("span"):
+                txt = span.get_text(strip=True)
+                if txt in ("棱彩阶", "黄金阶", "白银阶"):
+                    hex_tiers.append(txt)
+                    break
         entry["hex_names"] = hex_names
         entry["hex_tiers"] = hex_tiers
 
-        # 提取评级
-        rating_el = card.select_one(".rating-badge")
-        entry["rating"] = rating_el.get_text(strip=True).replace("级", "").strip() if rating_el else ""
+        # 评级：优先用 data-rich-rating 属性，比 "S 级" 文本稳
+        rating_el = card.select_one(".interaction-rating-badge")
+        if rating_el:
+            entry["rating"] = (
+                rating_el.get("data-rich-rating")
+                or rating_el.get_text(strip=True).replace("级", "").strip()
+            )
+        else:
+            entry["rating"] = ""
 
-        # 提取联动标签（支持所有类型：强力联动/陷阱/娱乐/Bug）
-        tag_el = card.select_one(".tag-badge")
-        entry["tag"] = tag_el.get_text(strip=True) if tag_el else ""
+        # 标签 (强力联动 / 陷阱 / 娱乐 / Bug)：rating badge 后面的兄弟 span
+        tag = ""
+        if rating_el:
+            for sib in rating_el.find_next_siblings("span"):
+                txt = sib.get_text(strip=True)
+                if txt in ("强力联动", "陷阱", "娱乐", "Bug", "通用"):
+                    tag = txt
+                    break
+        entry["tag"] = tag
 
-        # 提取分析文本（核心内容）
-        notes = card.select(".note")
-        analysis_parts = []
-        for note in notes:
-            text = note.get_text(strip=True)
-            if text:
-                analysis_parts.append(text)
-        entry["analysis"] = "\n".join(analysis_parts)
+        # 分析文本
+        note_el = card.select_one(".interaction-note")
+        entry["analysis"] = note_el.get_text(strip=True) if note_el else ""
 
-        # 提取推荐出装（每张联动卡片下方可能有金色边框的装备图标）
-        item_elements = card.select(".island-item")
+        # 推荐出装：data-rich-name 属性（业务字段稳定）
         recommended_items = []
-        for item_el in item_elements:
-            item_name = item_el.get("data-item-name", "")
-            if item_name:
-                recommended_items.append(item_name)
+        for chip in card.select(".interaction-item-chip"):
+            name = chip.get("data-rich-name", "")
+            if name:
+                recommended_items.append(name)
         if recommended_items:
             entry["recommended_items"] = recommended_items
 
         if entry["analysis"]:  # 只保留有内容的卡片
             synergies.append(entry)
+
+    # 抓到 0 张卡片：可能 ApexLol 又改版了 selector。打 ERROR 让问题不被静默吞掉
+    if not cards:
+        log.error(
+            f"[ApexLol] {champion_id} 页面解析到 0 张联动卡片"
+            f"——可能是 ApexLol 改版导致 selector 失效。"
+            f"如多个英雄都失败，请到 GitHub 报 issue: "
+            f"https://github.com/Zayia/ARAM-tool/issues"
+        )
 
     # 提取真实英雄名 (h1 通常是 "不祥之刃 卡特琳娜")
     cn_name = ""
@@ -289,31 +314,54 @@ def scrape_hextech_detail(hex_id: str) -> dict:
 
     result = {}
 
-    # 名称和阶级
-    title_section = soup.select_one(".title-section")
-    if title_section:
-        result["name"] = title_section.get_text(strip=True)
-        # 阶级从 header-card 的 class 判断
-        header = soup.select_one(".header-card")
-        if header:
-            classes = header.get("class", [])
-            for tier in ["prismatic", "gold", "silver"]:
-                if tier in classes:
-                    tier_map = {"prismatic": "棱彩阶", "gold": "黄金阶", "silver": "白银阶"}
-                    result["tier"] = tier_map.get(tier, tier)
-                    break
+    # 名称：直接取 <h1>。改版后 h1 就是海克斯名（不再有 "黄金阶罪恶快感" 这种前缀）
+    h1_el = soup.find("h1")
+    if h1_el:
+        result["name"] = h1_el.get_text(strip=True)
 
-    # 效果描述
-    desc_box = soup.select_one(".description-box")
-    if desc_box:
-        result["description"] = desc_box.get_text(strip=True)
+        # 阶级：h1 父容器内 h1 之前的 <span>
+        for sib in h1_el.find_previous_siblings("span"):
+            txt = sib.get_text(strip=True)
+            if txt in ("棱彩阶", "黄金阶", "白银阶"):
+                result["tier"] = txt
+                break
 
-    # 特殊机制
-    mech_box = soup.select_one(".mechanism-box")
-    if mech_box:
-        text = mech_box.get_text(strip=True)
-        if "暂无" not in text:
-            result["mechanism"] = text
+    # 效果描述：第一个 .prose-hex（.interaction-note 是联动卡片里的，要排除）
+    for prose in soup.select(".prose-hex"):
+        cls = " ".join(prose.get("class", []))
+        if "interaction-note" in cls:
+            continue
+        result["description"] = prose.get_text(strip=True)
+        break
+
+    # 特殊机制：在 "海克斯特殊机制" h2 所在 section 里抓所有 .prose-hex 拼起来
+    # "暂无机制" 时 section 里只有一个 <p>"暂无特殊机制..."，没有 .prose-hex，自然跳过
+    for h2 in soup.find_all("h2"):
+        if "特殊机制" not in h2.get_text(strip=True):
+            continue
+        section = h2.find_parent("section")
+        if not section:
+            break
+        mech_parts = [
+            p.get_text(strip=True)
+            for p in section.select(".prose-hex")
+            if p.get_text(strip=True)
+        ]
+        if mech_parts:
+            mech_text = "\n\n".join(mech_parts)
+            if "暂无" not in mech_text:
+                result["mechanism"] = mech_text
+        break
+
+    # 解析失败兜底：拿不到 name 或 description 多半是 ApexLol 又改版了
+    if not result.get("name") or not result.get("description"):
+        log.error(
+            f"[ApexLol] 海克斯 {hex_id} 解析失败 "
+            f"(name={result.get('name')!r}, description={'有' if result.get('description') else '无'})"
+            f"——可能是 ApexLol 改版导致 selector 失效。"
+            f"如多个海克斯都失败，请到 GitHub 报 issue: "
+            f"https://github.com/Zayia/ARAM-tool/issues"
+        )
 
     return result
 

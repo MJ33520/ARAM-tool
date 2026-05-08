@@ -48,6 +48,10 @@ logging.basicConfig(
 )
 log = logging.getLogger("ARAM")
 
+# 屏蔽底层 HTTP 库的 DEBUG/INFO 日志：每 3 秒轮询 LCU 会刷屏，对排查业务问题没帮助
+for _noisy in ("urllib3", "urllib3.connectionpool", "requests", "requests.packages.urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 from screenshot import capture_hextech_cards
 from gemini_analyzer import analyze_hextech_choice
 from config import (
@@ -378,7 +382,17 @@ class App:
                 if _is_busy():
                     print(f"[{_time.strftime('%H:%M:%S')}] ⚠️ 当前已有分析任务在进行中，请稍后再试。")
                     continue
-                
+
+                # 早拦截：定位/种族词不是英雄名
+                try:
+                    from apexlol_data import is_category
+                    hint = is_category(cmd)
+                    if hint:
+                        print(f"[{_time.strftime('%H:%M:%S')}] ⚠️ {hint}")
+                        continue
+                except Exception:
+                    pass
+
                 print(f"[{_time.strftime('%H:%M:%S')}] 🔒 英雄已锁定: {cmd}。正在为您生成【极速前瞻攻略】...")
                 
                 # 记录锁定的英雄
@@ -437,8 +451,22 @@ class App:
 
         def _bg_task():
             try:
-                from apexlol_data import extract_top_synergies, resolve_champion_id
-                # 先尝试解析英雄别名
+                from apexlol_data import extract_top_synergies, resolve_champion_id, is_category
+
+                # 先看用户是不是输了「ADC」「打野」之类的非英雄分类，给明确提示
+                category_hint = is_category(champion_name)
+                if category_hint:
+                    content = (
+                        f"## ⚠️ 这不是英雄名\n\n"
+                        f"**你输入了**: `{champion_name}`\n\n"
+                        f"{category_hint}\n\n"
+                        f"---\n\n请点 ✏️ 纠错按钮重新输入具体英雄名（中英文别名都行）。"
+                    )
+                    self.root.after(0, lambda: self._show_global_result(content))
+                    log.info(f"[纯数据] 用户输入分类词 '{champion_name}'，已提示")
+                    return
+
+                # 解析英雄别名
                 resolved = resolve_champion_id(champion_name)
                 lookup_name = resolved if resolved else champion_name
 
@@ -474,9 +502,22 @@ class App:
         name = sd.askstring(T("fix_prompt_title"), T("fix_prompt_msg"), parent=self.root)
         if name and name.strip():
             cmd = name.strip()
+
+            # 早拦截：用户输了"ADC""打野""刺客"等定位/种族词，三个分析级别都没意义
+            try:
+                from apexlol_data import is_category
+                hint = is_category(cmd)
+                if hint:
+                    from tkinter import messagebox
+                    log.info(f"[指定英雄] 拦截分类词 '{cmd}': {hint}")
+                    messagebox.showwarning("⚠️ 这不是英雄名", hint, parent=self.root)
+                    return
+            except Exception:
+                pass  # is_category 失败不致命，继续走原流程
+
             log.info(f"用户手动指定英雄: {cmd}")
             self._locked_champion = cmd
-            
+
             # ===== 第1级：尝试 LCU + AI 全局攻略 =====
             try:
                 from lcu_client import get_live_team_rosters, get_loading_screen_rosters
@@ -487,7 +528,7 @@ class App:
                     return
             except Exception as e:
                 log.warning(f"[指定英雄] LCU 不可用: {e}")
-            
+
             # ===== 第2级：尝试 AI 极速前瞻（无需 LCU） =====
             try:
                 from config import LLM_ENABLED
@@ -497,11 +538,11 @@ class App:
                     return
             except Exception:
                 pass
-            
+
             # ===== 第3级：纯 ApexLol 数据查表（无需 AI 也无需 LCU） =====
             log.info("[指定英雄] 路径C: 纯 ApexLol 数据查表（无 AI 模式）")
             self._run_pure_data_guide(cmd)
-                
+
         elif name is not None:
             from tkinter import messagebox
             messagebox.showwarning("⚠️", T("fix_error"), parent=self.root)
@@ -757,31 +798,61 @@ class App:
         return getattr(self, "_data_updating", False)
 
     # ==================== 显示全局攻略 ====================
-    def _show_global_result(self, content: str):
-        """在 Toplevel 窗口中显示全局攻略内容。"""
+    # ==================== 显示全局攻略 ====================
+    def _create_overlay(
+        self,
+        *,
+        kind: str,
+        content: str,
+        title_text: str,
+        title_bg: str,
+        title_fg: str,
+        accent_color: str,
+        width: int,
+        max_height: int,
+        height_padding: int,
+        position: tuple,
+        show_hint: bool,
+        on_close,
+        bottom_widgets=None,
+    ) -> None:
+        """通用 Toplevel 攻略窗口工厂——给 _show_global_result / _show_hextech_result 共享。
+
+        Args:
+            kind: "global" 或 "hextech"，决定属性挂到 self.overlay 还是 self.hextech_overlay
+            content: 要渲染的 Markdown 文本
+            title_text / title_bg / title_fg: 标题栏文字与配色
+            accent_color: 边框 + 顶部分隔线颜色
+            width / max_height / height_padding: 尺寸（高度上限 + 计算高度时加的余量）
+            position: (x, y) 屏幕坐标
+            show_hint: 是否在标题栏右侧显示 "Esc 隐藏 | 可拖拽" 提示
+            on_close: 点 ✕ / 按 Esc 时调用的回调
+            bottom_widgets: 可选回调 fn(bottom_frame) —— 让调用方往底部 frame 里塞按钮
+        """
+        attr_top = "overlay" if kind == "global" else "hextech_overlay"
+        attr_text = "overlay_text" if kind == "global" else "hextech_text"
+        attr_visible = "_overlay_visible" if kind == "global" else "_hextech_visible"
+
         # 销毁旧窗口
-        if self.overlay:
+        existing = getattr(self, attr_top, None)
+        if existing:
             try:
-                self.overlay.destroy()
+                existing.destroy()
             except Exception:
                 pass
-            self.overlay = None
-            self._overlay_visible = False
+            setattr(self, attr_top, None)
+            setattr(self, attr_visible, False)
 
         # 创建新 Toplevel
-        self.overlay = tk.Toplevel(self.root)
-        self.overlay.title("ARAM 攻略")
-        self.overlay.configure(bg=OVERLAY_BG_COLOR)
-        self.overlay.attributes("-topmost", True)
-        self.overlay.attributes("-alpha", OVERLAY_OPACITY)
-        self.overlay.overrideredirect(True)
+        top = tk.Toplevel(self.root)
+        top.title(title_text)
+        top.configure(bg=OVERLAY_BG_COLOR)
+        top.attributes("-topmost", True)
+        top.attributes("-alpha", OVERLAY_OPACITY)
+        top.overrideredirect(True)
 
-        screen_w = self.root.winfo_screenwidth()
-        x_pos = screen_w - OVERLAY_WIDTH - 20
-        y_pos = 40
-
-        # 标题栏
-        title_frame = tk.Frame(self.overlay, bg="#0d0d1a", cursor="fleur")
+        # ===== 标题栏 + 拖拽 =====
+        title_frame = tk.Frame(top, bg=title_bg, cursor="fleur")
         title_frame.pack(fill=tk.X)
 
         drag_data = {"x": 0, "y": 0}
@@ -791,16 +862,16 @@ class App:
             drag_data["y"] = e.y
 
         def on_drag(e):
-            x = self.overlay.winfo_x() + e.x - drag_data["x"]
-            y = self.overlay.winfo_y() + e.y - drag_data["y"]
-            self.overlay.geometry(f"+{x}+{y}")
+            x = top.winfo_x() + e.x - drag_data["x"]
+            y = top.winfo_y() + e.y - drag_data["y"]
+            top.geometry(f"+{x}+{y}")
 
         title_frame.bind("<Button-1>", start_drag)
         title_frame.bind("<B1-Motion>", on_drag)
 
         title_label = tk.Label(
-            title_frame, text=T("overlay_title"),
-            bg="#0d0d1a", fg=OVERLAY_TITLE_COLOR,
+            title_frame, text=title_text,
+            bg=title_bg, fg=title_fg,
             font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
             padx=12, pady=8,
         )
@@ -808,71 +879,94 @@ class App:
         title_label.bind("<Button-1>", start_drag)
         title_label.bind("<B1-Motion>", on_drag)
 
-        # 关闭按钮
+        # 关闭按钮（hover 配色统一为 #2a0a0f，leave 时回到对应 title_bg）
         close_btn = tk.Label(
-            title_frame, text="  ✕  ", bg="#0d0d1a", fg="#ff4757",
+            title_frame, text="  ✕  ", bg=title_bg, fg="#ff4757",
             font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
             cursor="hand2",
         )
         close_btn.pack(side=tk.RIGHT, padx=4)
-        close_btn.bind("<Button-1>", lambda e: self._hide_overlay())
+        close_btn.bind("<Button-1>", lambda e: on_close())
         close_btn.bind("<Enter>", lambda e: close_btn.configure(bg="#2a0a0f"))
-        close_btn.bind("<Leave>", lambda e: close_btn.configure(bg="#0d0d1a"))
+        close_btn.bind("<Leave>", lambda e, _bg=title_bg: close_btn.configure(bg=_bg))
 
-        hint = tk.Label(
-            title_frame, text=T("overlay_hint"),
-            bg="#0d0d1a", fg="#666680",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2),
-        )
-        hint.pack(side=tk.RIGHT, padx=8)
+        if show_hint:
+            tk.Label(
+                title_frame, text=T("overlay_hint"),
+                bg=title_bg, fg="#666680",
+                font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2),
+            ).pack(side=tk.RIGHT, padx=8)
 
-        # 分隔线
-        tk.Frame(self.overlay, bg=OVERLAY_ACCENT_COLOR, height=2).pack(fill=tk.X)
+        # ===== 顶部分隔线 =====
+        tk.Frame(top, bg=accent_color, height=2).pack(fill=tk.X)
 
-        # 内容区
-        content_frame = tk.Frame(self.overlay, bg=OVERLAY_BG_COLOR)
+        # ===== 内容区（Text + 滚动条）=====
+        content_frame = tk.Frame(top, bg=OVERLAY_BG_COLOR)
         content_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         scrollbar = tk.Scrollbar(content_frame, orient=tk.VERTICAL, bg=OVERLAY_BG_COLOR)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.overlay_text = tk.Text(
+        text_widget = tk.Text(
             content_frame, bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR,
             font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE), wrap=tk.WORD,
             relief=tk.FLAT, padx=12, pady=8, insertbackground=OVERLAY_FG_COLOR,
             yscrollcommand=scrollbar.set, cursor="arrow",
             spacing1=2, spacing3=2,
         )
-        self.overlay_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.overlay_text.yview)
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=text_widget.yview)
 
-        # 文本样式
-        self._setup_text_tags(self.overlay_text)
+        self._setup_text_tags(text_widget)
+        self._render_markdown(text_widget, content)
+        text_widget.configure(state=tk.DISABLED)
 
-        # 渲染内容
-        self._render_markdown(self.overlay_text, content)
-        self.overlay_text.configure(state=tk.DISABLED)
-
-        # 底部
-        bottom = tk.Frame(self.overlay, bg="#0d0d1a")
+        # ===== 底部 =====
+        bottom = tk.Frame(top, bg=title_bg)
         bottom.pack(fill=tk.X)
-        tk.Label(
-            bottom, text=T("overlay_footer"),
-            bg="#0d0d1a", fg="#444460",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2), pady=4,
-        ).pack()
+        if bottom_widgets is not None:
+            bottom_widgets(bottom)
+        else:
+            tk.Label(
+                bottom, text=T("overlay_footer"),
+                bg=title_bg, fg="#444460",
+                font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2), pady=4,
+            ).pack()
 
-        # 快捷键
-        self.overlay.bind("<Escape>", lambda e: self._hide_overlay())
+        # ===== 快捷键 =====
+        top.bind("<Escape>", lambda e: on_close())
 
-        # 大小和位置
-        self.overlay.update_idletasks()
-        h = min(self.overlay_text.winfo_reqheight() + 80, OVERLAY_MAX_HEIGHT)
-        self.overlay.geometry(f"{OVERLAY_WIDTH}x{h}+{x_pos}+{y_pos}")
-        self.overlay.configure(highlightbackground=OVERLAY_ACCENT_COLOR,
-                               highlightthickness=1)
-        self._overlay_visible = True
+        # ===== 尺寸与位置 =====
+        top.update_idletasks()
+        h = min(text_widget.winfo_reqheight() + height_padding, max_height)
+        x_pos, y_pos = position
+        top.geometry(f"{width}x{h}+{x_pos}+{y_pos}")
+        top.configure(highlightbackground=accent_color, highlightthickness=1)
 
+        # ===== 把状态写回 self =====
+        setattr(self, attr_top, top)
+        setattr(self, attr_text, text_widget)
+        setattr(self, attr_visible, True)
+
+    def _show_global_result(self, content: str):
+        """在 Toplevel 窗口中显示全局攻略内容。"""
+        screen_w = self.root.winfo_screenwidth()
+        x_pos = screen_w - OVERLAY_WIDTH - 20
+
+        self._create_overlay(
+            kind="global",
+            content=content,
+            title_text=T("overlay_title"),
+            title_bg="#0d0d1a",
+            title_fg=OVERLAY_TITLE_COLOR,
+            accent_color=OVERLAY_ACCENT_COLOR,
+            width=OVERLAY_WIDTH,
+            max_height=OVERLAY_MAX_HEIGHT,
+            height_padding=80,
+            position=(x_pos, 40),
+            show_hint=True,
+            on_close=self._hide_overlay,
+        )
         self.status_label.configure(text=T("status_done"))
 
     # ==================== 显示海克斯建议 ====================
@@ -881,130 +975,44 @@ class App:
         # 先恢复主按钮栏
         self.root.deiconify()
 
-        # 销毁旧海克斯面板
-        if self.hextech_overlay:
-            try:
-                self.hextech_overlay.destroy()
-            except Exception:
-                pass
-            self.hextech_overlay = None
-            self._hextech_visible = False
-
         # 保存最新分析结果用于关闭时提取符文名
         self._last_hextech_result = content
 
-        # 创建新 Toplevel（位于屏幕左侧中部）
-        self.hextech_overlay = tk.Toplevel(self.root)
-        self.hextech_overlay.title("⚡ 海克斯")
-        self.hextech_overlay.configure(bg=OVERLAY_BG_COLOR)
-        self.hextech_overlay.attributes("-topmost", True)
-        self.hextech_overlay.attributes("-alpha", OVERLAY_OPACITY)
-        self.hextech_overlay.overrideredirect(True)
-
-        hex_width = 420
-        x_pos = 20
         screen_h = self.root.winfo_screenheight()
         y_pos = max(40, (screen_h - 500) // 2)
 
-        # 标题栏（红色调，区别于全局面板）
-        title_frame = tk.Frame(self.hextech_overlay, bg="#1a0d0d", cursor="fleur")
-        title_frame.pack(fill=tk.X)
+        def _build_bottom(bottom):
+            # 🔄 再截一次
+            tk.Button(
+                bottom, text=T("hextech_btn_retry"), command=self._on_hextech,
+                bg="#1a0d0d", fg="#ffd700", activebackground="#2a2a4e",
+                activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
+                padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+            ).pack(side=tk.LEFT, padx=8, pady=4)
+            # ✕ 关闭（确认选择）
+            tk.Button(
+                bottom, text=T("hextech_btn_close"),
+                command=lambda: self._on_hextech_close(content),
+                bg="#1a0d0d", fg="#ff4757", activebackground="#2a2a4e",
+                activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
+                padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+            ).pack(side=tk.RIGHT, padx=8, pady=4)
 
-        drag_data = {"x": 0, "y": 0}
-
-        def start_drag(e):
-            drag_data["x"] = e.x
-            drag_data["y"] = e.y
-
-        def on_drag(e):
-            x = self.hextech_overlay.winfo_x() + e.x - drag_data["x"]
-            y = self.hextech_overlay.winfo_y() + e.y - drag_data["y"]
-            self.hextech_overlay.geometry(f"+{x}+{y}")
-
-        title_frame.bind("<Button-1>", start_drag)
-        title_frame.bind("<B1-Motion>", on_drag)
-
-        title_label = tk.Label(
-            title_frame, text=T("hextech_title"),
-            bg="#1a0d0d", fg="#ff6b6b",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
-            padx=12, pady=8,
+        self._create_overlay(
+            kind="hextech",
+            content=content,
+            title_text=T("hextech_title"),
+            title_bg="#1a0d0d",
+            title_fg="#ff6b6b",
+            accent_color="#ff6b6b",
+            width=420,
+            max_height=500,
+            height_padding=100,
+            position=(20, y_pos),
+            show_hint=False,
+            on_close=lambda: self._on_hextech_close(content),
+            bottom_widgets=_build_bottom,
         )
-        title_label.pack(side=tk.LEFT)
-        title_label.bind("<Button-1>", start_drag)
-        title_label.bind("<B1-Motion>", on_drag)
-
-        # 关闭按钮
-        close_btn = tk.Label(
-            title_frame, text="  ✕  ", bg="#1a0d0d", fg="#ff4757",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
-            cursor="hand2",
-        )
-        close_btn.pack(side=tk.RIGHT, padx=4)
-        close_btn.bind("<Button-1>", lambda e: self._on_hextech_close(content))
-        close_btn.bind("<Enter>", lambda e: close_btn.configure(bg="#2a0a0f"))
-        close_btn.bind("<Leave>", lambda e: close_btn.configure(bg="#1a0d0d"))
-
-        # 分隔线（红色调）
-        tk.Frame(self.hextech_overlay, bg="#ff6b6b", height=2).pack(fill=tk.X)
-
-        # 内容区
-        content_frame = tk.Frame(self.hextech_overlay, bg=OVERLAY_BG_COLOR)
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-
-        scrollbar = tk.Scrollbar(content_frame, orient=tk.VERTICAL, bg=OVERLAY_BG_COLOR)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.hextech_text = tk.Text(
-            content_frame, bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR,
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE), wrap=tk.WORD,
-            relief=tk.FLAT, padx=12, pady=8, insertbackground=OVERLAY_FG_COLOR,
-            yscrollcommand=scrollbar.set, cursor="arrow",
-            spacing1=2, spacing3=2,
-        )
-        self.hextech_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.hextech_text.yview)
-
-        # 文本样式
-        self._setup_text_tags(self.hextech_text)
-
-        # 渲染内容
-        self._render_markdown(self.hextech_text, content)
-        self.hextech_text.configure(state=tk.DISABLED)
-
-        # 底部按钮栏
-        bottom = tk.Frame(self.hextech_overlay, bg="#1a0d0d")
-        bottom.pack(fill=tk.X)
-
-        # 🔄 再截一次
-        retry_btn = tk.Button(
-            bottom, text=T("hextech_btn_retry"), command=self._on_hextech,
-            bg="#1a0d0d", fg="#ffd700", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
-            padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        retry_btn.pack(side=tk.LEFT, padx=8, pady=4)
-
-        # ✕ 关闭（确认选择）
-        close_btn2 = tk.Button(
-            bottom, text=T("hextech_btn_close"), command=lambda: self._on_hextech_close(content),
-            bg="#1a0d0d", fg="#ff4757", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
-            padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        close_btn2.pack(side=tk.RIGHT, padx=8, pady=4)
-
-        # 快捷键
-        self.hextech_overlay.bind("<Escape>", lambda e: self._on_hextech_close(content))
-
-        # 大小和位置
-        self.hextech_overlay.update_idletasks()
-        h = min(self.hextech_text.winfo_reqheight() + 100, 500)
-        self.hextech_overlay.geometry(f"{hex_width}x{h}+{x_pos}+{y_pos}")
-        self.hextech_overlay.configure(highlightbackground="#ff6b6b",
-                                       highlightthickness=1)
-        self._hextech_visible = True
-
         self.status_label.configure(text=T("status_hextech_done"))
 
     # ==================== 全局攻略 显示/隐藏 ====================
