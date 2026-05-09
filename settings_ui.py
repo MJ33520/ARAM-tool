@@ -72,6 +72,18 @@ _I18N = {
         "apexlol_status_loaded": "已缓存 {count} 英雄 / {age}h 前更新 / 剩余 {remaining}h",
         "apexlol_status_empty": "⚠️ 暂无本地缓存，建议立即更新",
         "apexlol_status_progress": "[{current}/{total}] 爬取: {name}",
+        "mayhem_section": "🛡️ ARAM Mayhem 核心出装数据",
+        "mayhem_desc": (
+            "本地缓存每个英雄的核心出装方案，含登场率与胜率（来源：arammayhem.com）。\n"
+            "• LCU 自动生成攻略时会把这些方案喂给 AI，从「猜出装」变成「基于实战数据排序」；\n"
+            "• 缓存 7 天有效，过期会在启动时自动后台刷新；\n"
+            "• 整个爬取约 70 秒（172 英雄）。"
+        ),
+        "mayhem_btn_update": "🔄 立即更新缓存",
+        "mayhem_btn_updating": "⏳ 更新中…",
+        "mayhem_status_loaded": "已缓存 {count} 英雄 / {age}h 前更新 / 剩余 {remaining}h",
+        "mayhem_status_empty": "⚠️ 暂无本地缓存，建议立即更新",
+        "mayhem_status_progress": "[{current}/{total}] 爬取: {name}",
         "restart_notice_lang": "语言变更需要重启应用才能生效；LLM 配置改动保存后立即生效。",
         "file_notice": "设置保存至本地文件（含密钥明文）：",
         "save_ok_title": "已保存",
@@ -118,6 +130,18 @@ _I18N = {
         "apexlol_status_loaded": "Cached {count} champs / {age}h ago / {remaining}h left",
         "apexlol_status_empty": "⚠️ No local cache yet — update recommended",
         "apexlol_status_progress": "[{current}/{total}] Scraping: {name}",
+        "mayhem_section": "🛡️ ARAM Mayhem core build data",
+        "mayhem_desc": (
+            "Local cache of each champion's top core builds with pickrate and winrate (source: arammayhem.com).\n"
+            "• When LCU auto-analysis runs, this data is fed into the AI prompt to upgrade builds from \"guess\" to \"data-driven\";\n"
+            "• Cache lives 7 days; auto-refreshes on startup when expired;\n"
+            "• A full scrape takes ~70s (172 champions)."
+        ),
+        "mayhem_btn_update": "🔄 Update cache now",
+        "mayhem_btn_updating": "⏳ Updating…",
+        "mayhem_status_loaded": "Cached {count} champs / {age}h ago / {remaining}h left",
+        "mayhem_status_empty": "⚠️ No local cache yet — update recommended",
+        "mayhem_status_progress": "[{current}/{total}] Scraping: {name}",
         "restart_notice_lang": "Language change requires a restart; LLM changes apply instantly on save.",
         "file_notice": "Settings are written locally (plaintext key):",
         "save_ok_title": "Saved",
@@ -203,6 +227,9 @@ class SettingsDialog:
 
         # ========== ApexLol 数据缓存区 ==========
         self._build_apexlol_section()
+
+        # ========== ARAM Mayhem 出装数据区 ==========
+        self._build_mayhem_section()
 
         # ========== 底部：提示 + 按钮 ==========
         notice = tk.Frame(self.win, bg="#1a1a2e")
@@ -510,6 +537,96 @@ class SettingsDialog:
             extra_progress=progress, on_done=on_done)
         if not started:
             log.info("[设置] 已有更新在跑，按钮保持禁用直到完成")
+
+    # ---------- ARAM Mayhem 数据缓存 ----------
+    def _build_mayhem_section(self):
+        """ARAM Mayhem 数据缓存区：跟 ApexLol section 完全平行，独立按钮、独立状态。"""
+        # 分隔线
+        tk.Frame(self.win, bg="#333355", height=1).pack(fill=tk.X, padx=16, pady=(4, 8))
+
+        section = tk.Frame(self.win, bg="#1a1a2e")
+        section.pack(fill=tk.X, padx=16, pady=(0, 8))
+
+        tk.Label(section, text=_t("mayhem_section"),
+                 bg="#1a1a2e", fg="#66ccff",
+                 font=("Microsoft YaHei UI", 10, "bold")).pack(anchor="w")
+
+        tk.Label(section, text=_t("mayhem_desc"),
+                 bg="#1a1a2e", fg="#888899", justify="left",
+                 font=("Microsoft YaHei UI", 8),
+                 wraplength=480).pack(anchor="w", pady=(2, 6))
+
+        row = tk.Frame(section, bg="#1a1a2e")
+        row.pack(fill=tk.X)
+
+        self.var_mayhem_status = tk.StringVar(value=self._format_mayhem_status())
+        tk.Label(row, textvariable=self.var_mayhem_status,
+                 bg="#1a1a2e", fg="#aaaacc",
+                 font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT)
+
+        self.btn_mayhem = tk.Button(
+            row, text=_t("mayhem_btn_update"),
+            command=self._on_mayhem_update,
+            bg="#2a3e5a", fg="#66ccff",
+            activebackground="#3a4e6a", activeforeground="#88ddff",
+            relief=tk.FLAT, padx=10, pady=4, cursor="hand2",
+            font=("Microsoft YaHei UI", 9, "bold"),
+        )
+        self.btn_mayhem.pack(side=tk.RIGHT)
+
+        if self.app is None:
+            self.btn_mayhem.configure(state=tk.DISABLED)
+        elif self.app.is_mayhem_updating():
+            self.btn_mayhem.configure(text=_t("mayhem_btn_updating"),
+                                       state=tk.DISABLED)
+
+    def _format_mayhem_status(self) -> str:
+        """读 arammayhem_data.get_cache_info 生成状态描述字符串。"""
+        try:
+            from arammayhem_data import get_cache_info
+            from config import ARAMMAYHEM_CACHE_DIR, ARAMMAYHEM_CACHE_TTL_DAYS
+            info = get_cache_info(ARAMMAYHEM_CACHE_DIR)
+            if not info.get("exists"):
+                return _t("mayhem_status_empty")
+            ttl_h = ARAMMAYHEM_CACHE_TTL_DAYS * 24
+            age = info.get("age_hours", 0)
+            remaining = max(0, ttl_h - age)
+            return _t("mayhem_status_loaded").format(
+                count=info.get("champion_count", 0),
+                age=int(age),
+                remaining=int(remaining),
+            )
+        except Exception as e:
+            log.warning(f"[设置] 读 Mayhem 缓存信息失败: {e}")
+            return f"⚠️ {e}"
+
+    def _on_mayhem_update(self):
+        """点击「立即更新缓存」：调用 app.trigger_mayhem_update。"""
+        if self.app is None:
+            return
+
+        self.btn_mayhem.configure(text=_t("mayhem_btn_updating"),
+                                   state=tk.DISABLED)
+
+        def progress(current, total, name):
+            try:
+                self.var_mayhem_status.set(_t("mayhem_status_progress").format(
+                    current=current, total=total, name=name))
+            except tk.TclError:
+                pass
+
+        def on_done(success: bool):
+            try:
+                self.btn_mayhem.configure(text=_t("mayhem_btn_update"),
+                                           state=tk.NORMAL)
+                self.var_mayhem_status.set(self._format_mayhem_status())
+            except tk.TclError:
+                pass
+
+        started = self.app.trigger_mayhem_update(
+            extra_progress=progress, on_done=on_done)
+        if not started:
+            log.info("[设置] Mayhem 已有更新在跑，按钮保持禁用直到完成")
 
     # ---------- 保存 ----------
     def _open_config_dir(self):

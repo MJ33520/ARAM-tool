@@ -14,7 +14,7 @@ import logging
 import time as _time
 
 from config import (
-    APEXLOL_ENABLED, LANGUAGE,
+    APEXLOL_ENABLED, ARAMMAYHEM_ENABLED, LANGUAGE,
     HEXTECH_IMAGE_TIMEOUT, HEXTECH_TEXT_TIMEOUT,
 )
 from llm_client import get_client
@@ -86,11 +86,20 @@ def analyze_lcu_rosters(rosters: dict, hextech_history: list = None) -> str:
             if prefilled_augments:
                 log.info(f"[ApexLol] LCU分析已附加 {my_champion} 的海克斯数据 ({len(prefilled_augments)} 字符)")
 
+        # ====== 数据驱动：从 ARAM Mayhem 硬抽该英雄的核心出装方案 ======
+        prefilled_builds = ""
+        if ARAMMAYHEM_ENABLED:
+            from arammayhem_data import extract_top_builds
+            prefilled_builds = extract_top_builds(my_champion)
+            if prefilled_builds:
+                log.info(f"[Mayhem] LCU分析已附加 {my_champion} 的核心出装数据 ({len(prefilled_builds)} 字符)")
+
         log.info(f"[LLM] 纯数据级全局分析 ({my_champion})...")
         prompt = LCU_FULL_STRATEGY_PROMPTS.get(LANGUAGE, LCU_FULL_STRATEGY_PROMPTS["zh"]).format(
             my_champion=my_champion,
             lcu_rosters=lcu_rosters,
-            prefilled_augments=prefilled_augments if prefilled_augments else "（无数据，请基于知识推荐3套最强海克斯符文方案）"
+            prefilled_augments=prefilled_augments if prefilled_augments else "（无数据，请基于知识推荐3套最强海克斯符文方案）",
+            prefilled_builds=prefilled_builds if prefilled_builds else "（无数据，请基于英雄特性自行推荐 6 件核心出装）",
         )
 
         # 注入海克斯历史
@@ -110,6 +119,8 @@ def analyze_lcu_rosters(rosters: dict, hextech_history: list = None) -> str:
         final_output = ""
         if prefilled_augments:
             final_output += prefilled_augments + "\n\n---\n\n"
+        if prefilled_builds:
+            final_output += prefilled_builds + "\n\n---\n\n"
         final_output += response_text
 
         return final_output

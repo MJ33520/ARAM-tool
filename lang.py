@@ -597,6 +597,10 @@ LCU_FULL_STRATEGY_PROMPTS = {
 根据上方阵容分析结果，推荐开局第一次购买的 2-3 件装备（总金额不超过 3400 金币），注明出装理由。
 
 ### 🛡️ 大乱斗核心出装（6件）
+**实战数据参考（来源 arammayhem.com）**：
+{prefilled_builds}
+（如上方提示"无数据"，凭借知识自行推荐；否则**优先采用胜率/登场率 Top1-2 的方案**作为核心，然后基于本局阵容做 1-2 件针对性调整，**而不是从头猜出装**）
+
 严格按照上方阵容分析和符文流派给出针对性出装！注意大乱斗没有回城，需要考虑续航。
 1. **装备完整名** — 针对敌方阵容/搭配符文的出装理由
 ...
@@ -630,6 +634,10 @@ The following are the highest win-rate Hextech augment builds for this champion.
 Output ONLY the following sections. **Do NOT output any hextech augment recommendations** (the system handles it automatically).
 
 ### 🛡️ Core Build (6 Items)
+**Real-match data reference (source: arammayhem.com)**:
+{prefilled_builds}
+(If "no data" above, recommend based on champion knowledge; otherwise **prioritize the Top1-2 builds by pickrate/winrate** as your core, then adapt 1-2 items to the current matchup — **don't guess from scratch**.)
+
 Strictly adapt this based on the enemy team composition and the provided Data Guide!
 1. **Item Name** — Why against their team / synergy with augments
 ... (6 items)

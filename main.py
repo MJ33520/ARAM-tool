@@ -59,6 +59,7 @@ from config import (
     OVERLAY_TITLE_COLOR, OVERLAY_WIDTH, OVERLAY_MAX_HEIGHT,
     OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE, OVERLAY_OPACITY, T,
     APEXLOL_ENABLED, APEXLOL_CACHE_DIR, APEXLOL_CACHE_TTL_DAYS,
+    ARAMMAYHEM_ENABLED, ARAMMAYHEM_CACHE_DIR, ARAMMAYHEM_CACHE_TTL_DAYS,
 )
 
 # 状态
@@ -225,6 +226,10 @@ class App:
         # 启动时加载 ApexLol 缓存
         if APEXLOL_ENABLED:
             self._init_apexlol_cache()
+
+        # 启动时加载 ARAM Mayhem 缓存
+        if ARAMMAYHEM_ENABLED:
+            self._init_mayhem_cache()
 
         # 启动命令行输入监听线程（仅在有 tty 时启用——
         # pythonw / 打包 --noconsole 启动 sys.stdin 为 None 或非 tty，readline() 会立即崩）
@@ -764,6 +769,110 @@ class App:
     def is_data_updating(self) -> bool:
         """供设置对话框查询当前是否有更新在跑。"""
         return getattr(self, "_data_updating", False)
+
+    # ==================== ARAM Mayhem 数据 ====================
+    def _init_mayhem_cache(self):
+        """启动时加载 ARAM Mayhem 缓存，过期或即将过期时自动后台刷新。
+
+        独立于 ApexLol 的初始化逻辑（共用同一份模式），允许两份缓存并发刷新。
+        """
+        try:
+            from arammayhem_data import load_cache, get_cache_info
+            import os
+
+            cache_file = os.path.join(ARAMMAYHEM_CACHE_DIR, "arammayhem_data.json")
+            cache_file_exists = os.path.exists(cache_file)
+
+            if cache_file_exists:
+                load_cache(ARAMMAYHEM_CACHE_DIR)
+                info = get_cache_info(ARAMMAYHEM_CACHE_DIR)
+                age_hours = info.get("age_hours", 0)
+                ttl_hours = ARAMMAYHEM_CACHE_TTL_DAYS * 24
+                remaining_hours = ttl_hours - age_hours
+                log.info(
+                    f"[Mayhem] 缓存已加载 ({info.get('champion_count', 0)} 英雄, "
+                    f"{age_hours:.0f}h 前更新, 剩余 {remaining_hours:.0f}h)"
+                )
+
+                if remaining_hours <= 0:
+                    log.info("[Mayhem] 缓存已过期，自动后台刷新中...")
+                    self._auto_refresh_mayhem()
+                elif remaining_hours <= 24:
+                    log.info(f"[Mayhem] 缓存将在 {remaining_hours:.0f}h 后过期，预防性后台刷新中...")
+                    self._auto_refresh_mayhem()
+            else:
+                log.info("[Mayhem] 首次使用，自动后台爬取数据...")
+                self._auto_refresh_mayhem()
+        except Exception as e:
+            log.warning(f"[Mayhem] 缓存初始化失败: {e}")
+
+    def _auto_refresh_mayhem(self):
+        """静默后台刷新 ARAM Mayhem 数据（不阻塞主线程，不弹窗）。"""
+        if getattr(self, "_mayhem_updating", False):
+            return
+        self._mayhem_updating = True
+        log.info("[Mayhem] 静默后台刷新启动")
+
+        def _bg():
+            try:
+                from arammayhem_scraper import scrape_all_builds
+                from arammayhem_data import load_cache
+                scrape_all_builds(ARAMMAYHEM_CACHE_DIR)
+                load_cache(ARAMMAYHEM_CACHE_DIR)
+                log.info("[Mayhem] [OK] 静默后台刷新完成")
+            except Exception as e:
+                log.error(f"[Mayhem] 静默后台刷新失败: {e}")
+            finally:
+                self._mayhem_updating = False
+
+        threading.Thread(target=_bg, daemon=True, name="MayhemAutoRefresh").start()
+
+    def trigger_mayhem_update(self, extra_progress=None, on_done=None) -> bool:
+        """手动/外部触发的 Mayhem 数据更新（在后台线程跑，独立锁，跟 ApexLol 互不干扰）。
+
+        Args:
+            extra_progress: 可选回调 fn(current, total, champion_name)，主线程调用
+            on_done: 可选回调 fn(success: bool)，主线程调用
+
+        Returns:
+            True 表示已成功启动；False 表示已有 Mayhem 更新在跑被忽略。
+        """
+        if getattr(self, "_mayhem_updating", False):
+            return False
+        self._mayhem_updating = True
+
+        def _run():
+            ok = False
+            try:
+                from arammayhem_scraper import scrape_all_builds
+                from arammayhem_data import load_cache
+
+                def progress(current, total, name):
+                    def _update():
+                        if extra_progress is not None:
+                            try:
+                                extra_progress(current, total, name)
+                            except Exception:
+                                pass
+                    self.root.after(0, _update)
+
+                scrape_all_builds(ARAMMAYHEM_CACHE_DIR, progress_callback=progress)
+                load_cache(ARAMMAYHEM_CACHE_DIR)
+                ok = True
+                log.info("[Mayhem] [OK] 数据更新完成")
+            except Exception as e:
+                log.error(f"[Mayhem] 数据更新失败: {e}")
+            finally:
+                self._mayhem_updating = False
+                if on_done is not None:
+                    self.root.after(0, lambda: on_done(ok))
+
+        threading.Thread(target=_run, daemon=True, name="MayhemUpdate").start()
+        return True
+
+    def is_mayhem_updating(self) -> bool:
+        """供设置对话框查询当前 Mayhem 是否有更新在跑。"""
+        return getattr(self, "_mayhem_updating", False)
 
     # ==================== 显示全局攻略 ====================
     # ==================== 显示全局攻略 ====================

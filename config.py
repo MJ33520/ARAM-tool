@@ -222,6 +222,12 @@ APEXLOL_CACHE_DIR = os.path.join(APP_DATA_DIR, "apexlol_cache")
 APEXLOL_CACHE_TTL_DAYS = 7             # 缓存过期天数
 os.makedirs(APEXLOL_CACHE_DIR, exist_ok=True)
 
+# ==================== ARAM Mayhem 核心出装数据 ====================
+ARAMMAYHEM_ENABLED = True              # 是否启用 arammayhem.com 出装数据
+ARAMMAYHEM_CACHE_DIR = os.path.join(APP_DATA_DIR, "arammayhem_cache")
+ARAMMAYHEM_CACHE_TTL_DAYS = 7
+os.makedirs(ARAMMAYHEM_CACHE_DIR, exist_ok=True)
+
 # ==================== 日志路径 ====================
 # 给 main.py 用；放在 APP_DATA_DIR 下，打包版退出后日志不会被清掉
 LOG_FILE = os.path.join(APP_DATA_DIR, "aram_debug.log")
