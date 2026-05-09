@@ -16,7 +16,7 @@ A real-time AI assistant for League of Legends ARAM (Hextech Havoc). Supports **
 - 🧪 **Connection test** — One-click ping before saving
 - 🔄 **Model auto-discovery** — Pulls model list from the provider's `/models` endpoint (Gemini & OpenAI)
 - 📋 **Full guide output** — Hextech augments, 6-item build, skill order, playstyle, team strategy
-- 🖥️ **Overlay** — Always-on-top, draggable; global hotkey `Ctrl+F12` toggles visibility (works in fullscreen)
+- 🖥️ **Overlay** — Always-on-top, draggable
 - 📂 **One-click log file** — Open `aram_debug.log` directly from settings
 - 🌐 **Bilingual** — Switch UI and AI output between Chinese and English
 - ♻️ **Auto-retry** — SSL EOF / 5xx / rate limit / "Post EOF" upstream errors retry automatically
@@ -59,8 +59,7 @@ Floating bar: `⚡Hextech  |  📋Guide  |  ✏️Fix  |  ⚙️  |  ✕`
 | ✕ | Quit the program |
 
 **Drag**: right-click-and-hold on any button / separator / status bar to drag the whole bar.
-**Global hotkey**: `Ctrl+F12` toggles the strategy overlay (works while the game is fullscreen, via pynput system hook).
-**Realtime log**: Settings → "📂 Open log file" opens `~/.aram_tool/aram_debug.log` in Notepad.
+**Realtime log**: Settings → "📂 Open config folder" reveals `~/.aram_tool/aram_debug.log`, `settings.json`, and the ApexLol cache.
 
 > Older versions had a "DOS console" toggle and a `🔄 Data` button — both removed/relocated. When running `python main.py` from a real terminal, you can still type a champion name directly into stdin to trigger an instant pre-game analysis.
 
@@ -103,7 +102,7 @@ The tool caches every champion's hextech synergy and rating data from [ApexLol.i
 
 | File | Description |
 |------|-------------|
-| `main.py` | Entry point; floating bar + Toplevel windows + LCU monitor + pynput global hotkey |
+| `main.py` | Entry point; floating bar + Toplevel windows + LCU monitor |
 | `config.py` | Config (env > settings.json > default); `reload()` enables LLM hot-reload |
 | `llm_client.py` | Unified LLM adapter (Gemini / OpenAI / custom); retry, ping test, model fetch |
 | `gemini_analyzer.py` | 4 analysis modes (full strategy / quick guide / hextech image / hextech text), routed via `LLMClient` |
@@ -145,7 +144,7 @@ git push origin v1.0.0
 
 - Hextech screenshot analysis must be triggered on the **loading screen / hextech selection screen** (cards must be visible)
 - Each analysis takes 5–30s depending on provider & network
-- The packaged build has no DOS window. To watch live logs, use Settings → "📂 Open log file"
+- The packaged build has no DOS window. To watch live logs, use Settings → "📂 Open config folder"
 - `~/.aram_tool/settings.json` contains plaintext API keys; permissions 0600 (Unix only — `chmod` is a no-op on Windows)
 - Multi-monitor: screenshots target the primary monitor (`monitors[1]`); playing on a secondary monitor will capture the wrong screen
 

@@ -236,38 +236,6 @@ class App:
         t_lcu = threading.Thread(target=self._lcu_live_monitor, daemon=True, name="LCUMonitor")
         t_lcu.start()
 
-        # 启动全局热键监听 (Ctrl+F12 切换攻略窗口) — 游戏全屏也能触发
-        self._hotkey_listener = None
-        self._start_global_hotkey()
-
-    def _start_global_hotkey(self):
-        """启动 pynput 全局热键监听。失败不致命，仅记录日志。
-
-        tkinter 的 bind 只在窗口聚焦时触发，游戏全屏时按 Ctrl+F12 不会响应；
-        pynput 的 GlobalHotKeys 通过系统级钩子能在任意前台窗口下触发。
-        """
-        try:
-            from pynput import keyboard
-        except ImportError as e:
-            log.warning(f"[hotkey] pynput 未安装，全局热键不可用: {e}")
-            return
-
-        def _on_toggle():
-            # tkinter 不支持跨线程操作，dispatch 回主线程
-            try:
-                self.root.after(0, self._on_show)
-            except (tk.TclError, RuntimeError):
-                pass
-
-        try:
-            self._hotkey_listener = keyboard.GlobalHotKeys({'<ctrl>+<f12>': _on_toggle})
-            self._hotkey_listener.daemon = True
-            self._hotkey_listener.start()
-            log.info("[hotkey] 全局热键 Ctrl+F12 已启用")
-        except Exception as e:
-            log.warning(f"[hotkey] 启动失败: {e}")
-            self._hotkey_listener = None
-
     def _lcu_live_monitor(self):
         """后台轮询 LCU API，在加载界面即自动触发分析。"""
         global _global_strategy, _hextech_history
@@ -1135,13 +1103,6 @@ class App:
 
     def _on_exit(self):
         log.info("[退出] 用户点击退出按钮")
-        # 先停掉全局热键监听，避免守护线程残留
-        if getattr(self, "_hotkey_listener", None) is not None:
-            try:
-                self._hotkey_listener.stop()
-            except Exception:
-                pass
-            self._hotkey_listener = None
         try:
             print(f"\n{T('console_bye')}")
         except Exception:
@@ -1160,8 +1121,6 @@ class App:
         x = self.root.winfo_x() + event.x - self._drag_data["x"]
         y = self.root.winfo_y() + event.y - self._drag_data["y"]
         self.root.geometry(f"+{x}+{y}")
-
-    # ==================== 全局热键 ====================
 
     def run(self):
         self.root.mainloop()

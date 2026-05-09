@@ -21,9 +21,6 @@ if GEMINI_API_KEY == "YOUR_API_KEY_HERE" or not GEMINI_API_KEY:
 
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
-# ==================== 热键配置 ====================
-TOGGLE_HOTKEY = "Ctrl+F12"    # 切换悬浮窗显示/隐藏
-
 # ==================== UI 配置 ====================
 OVERLAY_BG_COLOR = "#1a1a2e"
 OVERLAY_FG_COLOR = "#e0e0e0"

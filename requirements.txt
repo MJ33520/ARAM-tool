@@ -1,6 +1,5 @@
 google-genai
 mss
-pynput
 Pillow
 requests
 beautifulsoup4

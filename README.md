@@ -16,7 +16,7 @@
 - 🧪 **连通性测试** — 保存前一键 ping 一次，确认 provider/model/key 可用
 - 🔄 **模型列表自动拉取** — Gemini 和 OpenAI provider 都能从 `/models` 端点拉取可用模型
 - 📋 **完整攻略输出** — 海克斯符文、6 件装备、技能加点、打法要点、团队策略
-- 🖥️ **悬浮窗显示** — 始终置顶、支持拖拽、全局热键 `Ctrl+F12` 切换显示
+- 🖥️ **悬浮窗显示** — 始终置顶、支持拖拽
 - 📂 **一键打开日志** — 设置对话框里直接打开 `aram_debug.log`，免去手动找文件
 - 🌐 **中英文切换** — UI 文案和 AI 分析语言
 - ♻️ **瞬态错误自动重试** — SSL EOF / 5xx / 限流 / "Post EOF" 等触发自动重试
@@ -55,12 +55,11 @@ python main.py
 | ⚡ 海克斯 | 截图识别当前 3 选 1，给出选择建议 |
 | 📋 攻略 | 显示 / 隐藏全局攻略窗口 |
 | ✏️ 纠错 | 英雄识别错了时手动指定英雄名（自动 3 级降级：LCU+AI → 仅 AI 前瞻 → 纯数据查表） |
-| ⚙️ | 打开设置对话框（LLM provider、模型、密钥、界面语言、ApexLol 数据缓存、打开日志文件） |
+| ⚙️ | 打开设置对话框（LLM provider、模型、密钥、界面语言、ApexLol 数据缓存、打开配置目录） |
 | ✕ | 退出程序 |
 
 **拖拽**：右键按住任意按钮 / 分隔符 / 状态栏拖动整个浮动栏。
-**全局热键**：`Ctrl+F12` 切换攻略窗口显示/隐藏（游戏全屏也能触发，由 pynput 系统钩子实现）。
-**实时日志**：⚙️ 设置 → 「📂 打开日志文件」直接用记事本打开 `~/.aram_tool/aram_debug.log`。
+**实时日志**：⚙️ 设置 → 「📂 打开配置目录」可直接看到 `~/.aram_tool/aram_debug.log`、`settings.json` 与 ApexLol 缓存。
 
 > 早期版本有「DOS 窗口」复选框和 `🔄 数据`按钮，已分别移除/搬入设置。从命令行 `python main.py` 启动时仍可在终端直接打字输入英雄名触发极速前瞻分析。
 
@@ -103,11 +102,11 @@ set HEXTECH_TEXT_TIMEOUT=20
 
 | 文件 | 说明 |
 |------|------|
-| `main.py` | 主入口；浮动按钮栏 + Toplevel 窗口 + LCU 监控线程 + pynput 全局热键 |
+| `main.py` | 主入口；浮动按钮栏 + Toplevel 窗口 + LCU 监控线程 |
 | `config.py` | 配置读取（env > settings.json > default），`reload()` 支持 LLM 热重载 |
 | `llm_client.py` | 统一 LLM 适配层（Gemini / OpenAI / Custom），重试、连通性测试、模型列表拉取 |
 | `gemini_analyzer.py` | 4 种分析模式的业务逻辑（全局 / 极速前瞻 / 海克斯图像 / 海克斯文字），走 `LLMClient` |
-| `settings_ui.py` | ⚙️ 设置对话框；保存后自动 `config.reload()`；含 ApexLol 缓存管理与「打开日志文件」入口 |
+| `settings_ui.py` | ⚙️ 设置对话框；保存后自动 `config.reload()`；含 ApexLol 缓存管理与「打开配置目录」入口 |
 | `lang.py` | 中英文文案 + 所有 AI prompt 模板 |
 | `screenshot.py` | mss 截图模块（裁屏幕中央 70%×70% 减少 token） |
 | `apexlol_scraper.py` / `apexlol_data.py` | 爬取 ApexLol.info 数据 + 本地缓存 + 中文别名解析 |
@@ -145,7 +144,7 @@ git push origin v1.0.0
 
 - 海克斯截图分析需要在**加载界面 / 海克斯选择界面**触发（能看到选项卡片）
 - 单次分析耗时 5-30 秒，取决于 provider 和网络
-- 打包版没有 DOS 窗口；想看实时日志可在 ⚙️ 设置里点「📂 打开日志文件」
+- 打包版没有 DOS 窗口；想看实时日志可在 ⚙️ 设置里点「📂 打开配置目录」
 - `~/.aram_tool/settings.json` 含 API Key 明文，权限 0600（Unix；Windows 上 `chmod` 不生效）
 - 多显示器：截图默认抓主显示器（`monitors[1]`），副屏玩游戏会截错地方
 
