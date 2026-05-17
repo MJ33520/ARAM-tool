@@ -82,23 +82,50 @@ def get_cache_info(cache_dir: str) -> dict:
 def _resolve_slug(champion_name: str) -> str | None:
     """把任意英雄名（LCU 英文 / 中文称号 / 中文俗称）解析成 mayhem slug。
 
-    1. 先用 alias_to_slug（缓存里有 LCU 英文名的归一化映射）
-    2. 失败再尝试 cn_title / cn_name 中文匹配
+    1. 英文路径：归一化（去空格/标点/小写）后查 alias_to_slug
+    2. 中文路径：扫 cn_title / cn_name，先严格相等（同样归一化容忍空格），
+       再走子串包含兜底（覆盖 "暴走萝莉" 匹配 "暴走萝莉金克丝" 这类）
+    3. 兜底：用 ApexLol 的中文别名表先解析成英文再回查
     """
     if not _cache or not champion_name:
         return None
 
-    # 1) 英文路径：归一化后查 alias_to_slug
-    n = _normalize_alias(champion_name)
-    if n:
-        slug = _cache.get("alias_to_slug", {}).get(n)
+    # 1) 英文 + 归一化路径
+    n_target = _normalize_alias(champion_name)
+    if n_target:
+        slug = _cache.get("alias_to_slug", {}).get(n_target)
         if slug:
             return slug
 
     # 2) 中文路径：扫所有英雄的 cn_title / cn_name
-    for slug, info in _cache.get("champions", {}).items():
-        if champion_name == info.get("cn_title") or champion_name == info.get("cn_name"):
-            return slug
+    if n_target:
+        # 2a) 严格相等（同样走 _normalize_alias，让 "暴走萝莉 金克丝" 与 "暴走萝莉金克丝" 等价）
+        for slug, info in _cache.get("champions", {}).items():
+            n_title = _normalize_alias(info.get("cn_title", ""))
+            n_name = _normalize_alias(info.get("cn_name", ""))
+            if n_target == n_title or n_target == n_name:
+                return slug
+
+        # 2b) 子串包含兜底：LCU 给"暴走萝莉"，mayhem 的 cn_title 可能是
+        #     "暴走萝莉 金克丝"（带名字）；要么 target 是 field 子串，要么反之
+        #     长度差 ≤4 避免短关键字误命中（如 "盲僧" 命中 "盲僧 李青" OK，
+        #     但 "亚" 这种 1 字 query 已在 n_target 长度门槛被挡）
+        if len(n_target) >= 2:
+            candidates: list[tuple[int, str]] = []
+            for slug, info in _cache.get("champions", {}).items():
+                for field in (_normalize_alias(info.get("cn_title", "")),
+                              _normalize_alias(info.get("cn_name", ""))):
+                    if not field or len(field) < 2:
+                        continue
+                    if (n_target in field or field in n_target) \
+                       and abs(len(field) - len(n_target)) <= 4:
+                        candidates.append((abs(len(field) - len(n_target)), slug))
+            if candidates:
+                candidates.sort()  # 长度差最小的优先
+                log.info(
+                    f"[Mayhem] 子串匹配命中: '{champion_name}' → {candidates[0][1]}"
+                )
+                return candidates[0][1]
 
     # 3) 兜底：尝试用 ApexLol 的中文别名表先解析成英文再走 (1)
     try:

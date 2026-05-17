@@ -272,6 +272,16 @@ def scrape_all_builds(cache_dir: str, progress_callback=None) -> dict:
         for alias in champ.get("aliases", []):
             all_data["alias_to_slug"][alias] = slug
 
+        # 把中文 cn_title / cn_name 归一化后也注册——这样 LCU 给出的中文
+        # 称号（如 "暴走萝莉"）或俗名（如 "金克丝"）都能在第一步 alias_to_slug
+        # 查询中直接命中，免得走到 _resolve_slug 第 2/3 步兜底
+        for cn in (data.get("cn_title"), data.get("cn_name"), cn_title):
+            if not cn:
+                continue
+            n = _normalize_alias(cn)
+            if n and n not in all_data["alias_to_slug"]:
+                all_data["alias_to_slug"][n] = slug
+
         if i < total - 1:
             time.sleep(REQUEST_DELAY)
 
