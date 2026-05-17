@@ -21,9 +21,6 @@ if GEMINI_API_KEY == "YOUR_API_KEY_HERE" or not GEMINI_API_KEY:
 
 GEMINI_MODEL = "gemini-3.1-flash-lite-preview"
 
-# ==================== 热键配置 ====================
-TOGGLE_HOTKEY = "Ctrl+F12"    # 切换悬浮窗显示/隐藏
-
 # ==================== UI 配置 ====================
 OVERLAY_BG_COLOR = "#1a1a2e"
 OVERLAY_FG_COLOR = "#e0e0e0"
@@ -36,9 +33,11 @@ OVERLAY_FONT_SIZE = 11
 OVERLAY_OPACITY = 0.92
 
 # ==================== 截图配置 ====================
-SCREENSHOT_DIR = os.path.join(os.path.dirname(__file__), "screenshots")
+# 持久化数据放用户主目录（打包版临时目录会被清）
+APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".aram_tool")
+SCREENSHOT_DIR = os.path.join(APP_DATA_DIR, "screenshots")
 
 # ==================== ApexLol 数据增强 ====================
-APEXLOL_ENABLED = True                 
-APEXLOL_CACHE_DIR = os.path.join(os.path.dirname(__file__), "apexlol_cache")
+APEXLOL_ENABLED = True
+APEXLOL_CACHE_DIR = os.path.join(APP_DATA_DIR, "apexlol_cache")
 APEXLOL_CACHE_TTL_DAYS = 7             

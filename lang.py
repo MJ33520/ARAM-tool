@@ -26,7 +26,6 @@ STRINGS = {
         "console_analyze_hint": "   ⚡ 海克斯 → 截图识别3选1海克斯，给出选择建议",
         "console_guide_hint": "   📋 攻略 → 重新打开/隐藏攻略",
         "console_drag_hint": "      右键拖拽移动按钮位置",
-        "console_hotkey_hint": "⌨️  全局热键: Ctrl+F12 → 切换显示/隐藏攻略（游戏中也可用）",
         "console_restart_hint": "🔄 无需重启！每局加载时自动分析阵容并生成攻略",
         "console_hero_hint": "      AI 会通过 LCU 接口自动获取你的英雄，无需截图",
         "console_log": "📝 日志: {}",
@@ -41,6 +40,9 @@ STRINGS = {
         # ApexLol 数据
         "btn_data": "🔄 数据",
         "btn_data_updating": "⏳ 爬取中...",
+        # 设置
+        "btn_settings": "⚙️",
+        "btn_exit": "✕",
         "status_data_loaded": "✅ 已加载 {} 英雄数据 | 右键拖拽",
         "status_data_missing": "⚠️ 请点 🔄 数据 爮取英雄数据",
         "status_data_updating": "🔄 正在爮取英雄数据...",
@@ -83,7 +85,6 @@ STRINGS = {
         "console_analyze_hint": "   ⚔️ Analyze → Screenshot + AI analysis (auto-detects your champ)",
         "console_guide_hint": "   📋 Guide → Show/hide the guide overlay",
         "console_drag_hint": "      Right-click drag to move buttons",
-        "console_hotkey_hint": "⌨️  Global hotkey: Ctrl+F12 → Toggle guide overlay (works in-game)",
         "console_restart_hint": "🔄 No restart needed! Click ⚔️ Analyze at the start of each game",
         "console_hero_hint": "      AI auto-identifies your champion by the golden name on loading screen",
         "console_log": "📝 Log: {}",
@@ -98,6 +99,9 @@ STRINGS = {
         # ApexLol data
         "btn_data": "🔄 Data",
         "btn_data_updating": "⏳ Scraping...",
+        # Settings
+        "btn_settings": "⚙️",
+        "btn_exit": "✕",
         "status_data_loaded": "✅ Loaded {} champs | Right-click drag",
         "status_data_missing": "⚠️ Click 🔄 Data to fetch champion data",
         "status_data_updating": "🔄 Scraping champion data...",
@@ -593,6 +597,10 @@ LCU_FULL_STRATEGY_PROMPTS = {
 根据上方阵容分析结果，推荐开局第一次购买的 2-3 件装备（总金额不超过 3400 金币），注明出装理由。
 
 ### 🛡️ 大乱斗核心出装（6件）
+**实战数据参考（来源 arammayhem.com）**：
+{prefilled_builds}
+（如上方提示"无数据"，凭借知识自行推荐；否则**优先采用胜率/登场率 Top1-2 的方案**作为核心，然后基于本局阵容做 1-2 件针对性调整，**而不是从头猜出装**）
+
 严格按照上方阵容分析和符文流派给出针对性出装！注意大乱斗没有回城，需要考虑续航。
 1. **装备完整名** — 针对敌方阵容/搭配符文的出装理由
 ...
@@ -626,6 +634,10 @@ The following are the highest win-rate Hextech augment builds for this champion.
 Output ONLY the following sections. **Do NOT output any hextech augment recommendations** (the system handles it automatically).
 
 ### 🛡️ Core Build (6 Items)
+**Real-match data reference (source: arammayhem.com)**:
+{prefilled_builds}
+(If "no data" above, recommend based on champion knowledge; otherwise **prioritize the Top1-2 builds by pickrate/winrate** as your core, then adapt 1-2 items to the current matchup — **don't guess from scratch**.)
+
 Strictly adapt this based on the enemy team composition and the provided Data Guide!
 1. **Item Name** — Why against their team / synergy with augments
 ... (6 items)

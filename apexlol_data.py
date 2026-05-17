@@ -128,7 +128,7 @@ CHAMPION_ALIASES = {
     "伊芙琳": "Evelynn", "寡妇": "Evelynn",
     "伊泽瑞尔": "Ezreal",
     "易": "MasterYi", "易大师": "MasterYi", "剑圣": "MasterYi",
-    "永恩": "Yone", "约里克": "Yorick", "约德尔": None, "尤米": "Yuumi",
+    "永恩": "Yone", "约里克": "Yorick", "尤米": "Yuumi",
     "悠米": "Yuumi", "瑶": "Lillia", "影流之主": "Zed",
     "永岚": "YongLan",
     # ===== Z =====
@@ -148,8 +148,44 @@ CHAMPION_ALIASES = {
     "EZ": "Ezreal", "ez": "Ezreal", "VN": "Vayne", "vn": "Vayne",
     "TF": "TwistedFate", "tf": "TwistedFate",
     "MF": "MissFortune", "mf": "MissFortune",
-    "ADC": None,
 }
+
+
+# 这些不是英雄名，是种族 / 定位 / 通用术语。用户输入它们时给个明确提示，
+# 而不是让模糊匹配把它们错配到某个真英雄上。
+CHAMPION_CATEGORIES: dict[str, str] = {
+    # 种族
+    "约德尔": "「约德尔」是种族（拉莫斯、波比、凯尔、拉克丝、提莫等），请输入具体英雄名",
+    # 定位 / 站位
+    "ADC": "「ADC」是定位（寒冰、卡莎、薇恩、伊泽瑞尔等），请输入具体英雄名",
+    "adc": "「ADC」是定位（寒冰、卡莎、薇恩、伊泽瑞尔等），请输入具体英雄名",
+    "AP": "「AP」是定位（拉克丝、辛德拉、安妮等法师），请输入具体英雄名",
+    "AD": "「AD」是定位，请输入具体英雄名",
+    "辅助": "「辅助」是定位（锤石、布隆、风女等），请输入具体英雄名",
+    "打野": "「打野」是召唤师峡谷概念，大乱斗模式没有打野；请输入具体英雄名",
+    "中单": "「中单」是召唤师峡谷概念，大乱斗模式没有分路；请输入具体英雄名",
+    "上单": "「上单」是召唤师峡谷概念，大乱斗模式没有分路；请输入具体英雄名",
+    "下路": "「下路」是召唤师峡谷概念，大乱斗模式没有分路；请输入具体英雄名",
+    "刺客": "「刺客」是流派（劫、卡特琳娜、阿卡丽等），请输入具体英雄名",
+    "坦克": "「坦克」是流派（奥恩、慎、墨菲特等），请输入具体英雄名",
+    "战士": "「战士」是流派（剑姬、亚托克斯等），请输入具体英雄名",
+    "法师": "「法师」是流派（拉克丝、辛德拉、维克托等），请输入具体英雄名",
+    "射手": "「射手」是定位（寒冰、卡莎、薇恩等），请输入具体英雄名",
+}
+
+
+def is_category(name: str) -> str | None:
+    """如果 name 是定位 / 种族 / 流派等"非具体英雄"分类，返回友好提示文本；否则返回 None。
+
+    用法：
+        hint = is_category(user_input)
+        if hint:
+            return f"⚠️ {hint}"  # 直接提示用户重新输入
+        # 否则走正常 resolve_champion_id 流程
+    """
+    if not name:
+        return None
+    return CHAMPION_CATEGORIES.get(name.strip())
 
 
 # 全局缓存
@@ -375,8 +411,18 @@ def extract_top_synergies(champion_name: str, top_n: int = 8) -> str:
         return ""
 
     champ_data = _cache.get("champions", {}).get(champ_id)
-    if not champ_data or not champ_data.get("synergies"):
-        log.warning(f"[ApexLol] extract_top_synergies: {champ_id} 在缓存中无联动数据")
+    if not champ_data:
+        log.warning(
+            f"[ApexLol] extract_top_synergies: {champ_id} 不在缓存中"
+            f"（ApexLol 未收录或数据缓存过旧，建议刷新数据）"
+        )
+        return ""
+    if not champ_data.get("synergies"):
+        log.warning(
+            f"[ApexLol] extract_top_synergies: {champ_id} 在缓存中但 synergies 为空"
+            f"——可能是上次抓取失败（ApexLol 改版/网络问题）或站方暂无该英雄数据。"
+            f"如多个英雄都为空，建议在设置中刷新数据；仍异常请到 GitHub 报 issue"
+        )
         return ""
 
     cn_title = _fix_mojibake(champ_data.get("cn_title", champ_id))

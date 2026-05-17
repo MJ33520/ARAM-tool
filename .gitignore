@@ -26,3 +26,11 @@ test_*.py
 pyproject.toml
 uv.lock
 node_modules/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+release/
+*.zip
+

@@ -15,9 +15,11 @@ import io
 
 # Force utf-8 for stdout and stderr to prevent ascii encoding errors on Windows
 if hasattr(sys.stdout, 'encoding') and sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 if hasattr(sys.stderr, 'encoding') and sys.stderr.encoding and sys.stderr.encoding.lower() not in ('utf-8', 'utf8'):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 import time as _time
 import threading
@@ -28,18 +30,27 @@ import ctypes.wintypes
 import tkinter as tk
 
 # ==================== 日志配置 ====================
-LOG_DIR = os.path.dirname(os.path.abspath(__file__))
+# 日志放在用户主目录的 .aram_tool/，打包版（onefile）的临时目录退出会被清，
+# 必须用持久化目录才能事后查日志
+LOG_DIR = os.path.join(os.path.expanduser("~"), ".aram_tool")
+os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "aram_debug.log")
+
+# pythonw / --noconsole 启动时 sys.stdout 可能为 None，直接给 StreamHandler 会崩
+_log_handlers = [logging.FileHandler(LOG_FILE, encoding="utf-8", mode="a")]
+if sys.stdout is not None:
+    _log_handlers.append(logging.StreamHandler(sys.stdout))
 
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8", mode="a"),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=_log_handlers,
 )
 log = logging.getLogger("ARAM")
+
+# 屏蔽底层 HTTP 库的 DEBUG/INFO 日志：每 3 秒轮询 LCU 会刷屏，对排查业务问题没帮助
+for _noisy in ("urllib3", "urllib3.connectionpool", "requests", "requests.packages.urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 from screenshot import capture_hextech_cards
 from gemini_analyzer import analyze_hextech_choice
@@ -48,6 +59,7 @@ from config import (
     OVERLAY_TITLE_COLOR, OVERLAY_WIDTH, OVERLAY_MAX_HEIGHT,
     OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE, OVERLAY_OPACITY, T,
     APEXLOL_ENABLED, APEXLOL_CACHE_DIR, APEXLOL_CACHE_TTL_DAYS,
+    ARAMMAYHEM_ENABLED, ARAMMAYHEM_CACHE_DIR, ARAMMAYHEM_CACHE_TTL_DAYS,
 )
 
 # 状态
@@ -55,6 +67,49 @@ _is_analyzing = False
 _is_hextech_analyzing = False
 _global_strategy = None       # 全局攻略文本（缓存）
 _hextech_history = []          # 已选海克斯列表
+
+# 状态互斥锁：保护 _is_analyzing / _is_hextech_analyzing 的 check-and-set，
+# 防止 LCU 监控线程、stdin 监听线程、UI 主线程同时通过 "if not busy" 守卫
+_state_lock = threading.Lock()
+
+
+def _try_lock_global() -> bool:
+    """原子地尝试占用全局分析槽。返回 True 表示成功；False 表示已有任务在跑。"""
+    global _is_analyzing
+    with _state_lock:
+        if _is_analyzing or _is_hextech_analyzing:
+            return False
+        _is_analyzing = True
+        return True
+
+
+def _unlock_global() -> None:
+    """释放全局分析槽。"""
+    global _is_analyzing
+    with _state_lock:
+        _is_analyzing = False
+
+
+def _try_lock_hextech() -> bool:
+    """原子地尝试占用海克斯分析槽。"""
+    global _is_hextech_analyzing
+    with _state_lock:
+        if _is_hextech_analyzing or _is_analyzing:
+            return False
+        _is_hextech_analyzing = True
+        return True
+
+
+def _unlock_hextech() -> None:
+    """释放海克斯分析槽。"""
+    global _is_hextech_analyzing
+    with _state_lock:
+        _is_hextech_analyzing = False
+
+
+def _is_busy() -> bool:
+    """快速读取是否有分析任务在跑（不加锁，仅用于不严格的 UI 提示）。"""
+    return _is_analyzing or _is_hextech_analyzing
 
 
 class App:
@@ -107,19 +162,31 @@ class App:
                         font=("Microsoft YaHei UI", 11))
         sep_fix.pack(side=tk.LEFT)
 
-        # 🔄 数据（ApexLol）
-        if APEXLOL_ENABLED:
-            sep3 = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
-                            font=("Microsoft YaHei UI", 11))
-            sep3.pack(side=tk.LEFT)
+        # （🔄 数据按钮已移到 ⚙️ 设置 → ApexLol 数据缓存）
 
-            self.btn_data = tk.Button(
-                btn_frame, text=T("btn_data"), command=self._on_update_data,
-                bg="#1a1a2e", fg="#66ff66", activebackground="#2a2a4e",
-                activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
-                padx=8, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-            )
-            self.btn_data.pack(side=tk.LEFT, padx=(1, 2))
+        # ⚙️ 设置
+        sep_set = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
+                           font=("Microsoft YaHei UI", 11))
+        sep_set.pack(side=tk.LEFT)
+        self.btn_settings = tk.Button(
+            btn_frame, text=T("btn_settings"), command=self._on_settings,
+            bg="#1a1a2e", fg="#aaaacc", activebackground="#2a2a4e",
+            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
+            padx=6, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+        )
+        self.btn_settings.pack(side=tk.LEFT, padx=(1, 2))
+
+        # ✕ 退出
+        sep_exit = tk.Label(btn_frame, text="|", bg="#1a1a2e", fg="#333355",
+                            font=("Microsoft YaHei UI", 11))
+        sep_exit.pack(side=tk.LEFT)
+        self.btn_exit = tk.Button(
+            btn_frame, text=T("btn_exit"), command=self._on_exit,
+            bg="#1a1a2e", fg="#ff5577", activebackground="#442233",
+            activeforeground="#ffffff", font=("Microsoft YaHei UI", 11, "bold"),
+            padx=6, pady=4, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+        )
+        self.btn_exit.pack(side=tk.LEFT, padx=(1, 2))
 
         self.status_label = tk.Label(
             self.root, text=T("status_ready"),
@@ -133,9 +200,9 @@ class App:
         # 拖拽
         self._drag_data = {"x": 0, "y": 0}
         drag_widgets = [self.btn_hextech, self.btn_show, self.btn_fix,
-                        sep2, sep_fix, self.status_label, btn_frame]
-        if APEXLOL_ENABLED:
-            drag_widgets.extend([sep3, self.btn_data])
+                        sep2, sep_fix, sep_set, self.btn_settings,
+                        sep_exit, self.btn_exit,
+                        self.status_label, btn_frame]
         for w in drag_widgets:
             w.bind("<Button-3>", self._start_drag)
             w.bind("<B3-Motion>", self._on_drag)
@@ -160,9 +227,15 @@ class App:
         if APEXLOL_ENABLED:
             self._init_apexlol_cache()
 
-        # 启动命令行输入监听线程
-        t_input = threading.Thread(target=self._console_input_listener, daemon=True, name="ConsoleInput")
-        t_input.start()
+        # 启动时加载 ARAM Mayhem 缓存
+        if ARAMMAYHEM_ENABLED:
+            self._init_mayhem_cache()
+
+        # 启动命令行输入监听线程（仅在有 tty 时启用——
+        # pythonw / 打包 --noconsole 启动 sys.stdin 为 None 或非 tty，readline() 会立即崩）
+        if sys.stdin is not None and sys.stdin.isatty():
+            t_input = threading.Thread(target=self._console_input_listener, daemon=True, name="ConsoleInput")
+            t_input.start()
 
         # 启动 LCU 自动对局监控线程
         t_lcu = threading.Thread(target=self._lcu_live_monitor, daemon=True, name="LCUMonitor")
@@ -170,20 +243,20 @@ class App:
 
     def _lcu_live_monitor(self):
         """后台轮询 LCU API，在加载界面即自动触发分析。"""
-        global _is_analyzing, _is_hextech_analyzing, _global_strategy, _hextech_history
+        global _global_strategy, _hextech_history
         _match_analyzed_flag = False
         from lcu_client import get_loading_screen_rosters, get_gameflow_phase
         import time
 
-        
+
         while True:
             try:
                 phase = get_gameflow_phase()
-                
+
                 # 在加载界面 (InProgress 或 GameStart) 进行秒级前瞻分析
                 # 兼容 WeGame 无畏契约/极速模式：在此模式下客户端可能会在 GameStart 后立即变成 None，以节省内存
                 if phase in ("InProgress", "GameStart"):
-                    if not _match_analyzed_flag and not _is_analyzing and not _is_hextech_analyzing:
+                    if not _match_analyzed_flag and not _is_busy():
                         # 先不传 override，让 LCU 返回真实英雄
                         rosters = get_loading_screen_rosters()
                         if rosters:
@@ -224,14 +297,13 @@ class App:
 
     def _run_lcu_auto_analysis(self, rosters: dict, is_correction: bool = False):
         """执行 LCU 纯文本全量分析（无截图界面）"""
-        global _is_analyzing, _global_strategy, _hextech_history
-        if _is_analyzing:
+        global _global_strategy, _hextech_history
+        if not _try_lock_global():
             return
-        
-        _is_analyzing = True
+
         self._detected_champion = rosters.get("my_champion") # 记录当前对局识别到的英雄
         self.status_label.configure(text=T("status_lcu_analyzing"))
-        
+
         # 弹窗提示
         self._on_show()
         if self.overlay_text:
@@ -239,24 +311,24 @@ class App:
             self.overlay_text.delete(1.0, tk.END)
             self.overlay_text.insert(tk.END, f"🚀 正在基于客户端全量数据极速生成终极阵容攻略，请稍候...")
             self.overlay_text.configure(state=tk.DISABLED)
-            
+
         def _bg_task():
-            global _is_analyzing, _global_strategy, _hextech_history
+            global _global_strategy, _hextech_history
             try:
                 from gemini_analyzer import analyze_lcu_rosters
                 result = analyze_lcu_rosters(rosters, _hextech_history)
-                
+
                 _global_strategy = result
-                
+
                 # 在主线程中更新显示
                 self.root.after(0, lambda: self._show_global_result(result))
             except Exception as e:
                 log.error(f"LCU 分析出错: {e}")
                 self.root.after(0, lambda: self._show_global_result(f"❌ LCU 分析出错:\n{e}"))
             finally:
-                _is_analyzing = False
+                _unlock_global()
                 self.root.after(0, lambda: self.status_label.configure(text=T("status_done")))
-                
+
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
 
@@ -280,10 +352,20 @@ class App:
                     continue
                 
                 # 检查是否正在分析
-                if _is_analyzing or _is_hextech_analyzing:
+                if _is_busy():
                     print(f"[{_time.strftime('%H:%M:%S')}] ⚠️ 当前已有分析任务在进行中，请稍后再试。")
                     continue
-                
+
+                # 早拦截：定位/种族词不是英雄名
+                try:
+                    from apexlol_data import is_category
+                    hint = is_category(cmd)
+                    if hint:
+                        print(f"[{_time.strftime('%H:%M:%S')}] ⚠️ {hint}")
+                        continue
+                except Exception:
+                    pass
+
                 print(f"[{_time.strftime('%H:%M:%S')}] 🔒 英雄已锁定: {cmd}。正在为您生成【极速前瞻攻略】...")
                 
                 # 记录锁定的英雄
@@ -298,13 +380,12 @@ class App:
 
     def _run_quick_guide(self, champion_name: str):
         """执行极速前瞻分析（无截图界面）"""
-        global _is_analyzing, _global_strategy
-        if _is_analyzing:
+        global _global_strategy
+        if not _try_lock_global():
             return
-        
-        _is_analyzing = True
+
         self.status_label.configure(text=T("status_quick_analyzing"))
-        
+
         # 弹窗显示前瞻正在进行
         self._on_show()
         if self.overlay_text:
@@ -312,39 +393,53 @@ class App:
             self.overlay_text.delete(1.0, tk.END)
             self.overlay_text.insert(tk.END, f"🚀 正在为您极速生成【{champion_name}】的前瞻攻略，请稍候...")
             self.overlay_text.configure(state=tk.DISABLED)
-            
+
         def _bg_task():
-            global _is_analyzing, _global_strategy, _hextech_history
+            global _global_strategy, _hextech_history
             try:
                 from gemini_analyzer import analyze_champion_quick_guide
                 result = analyze_champion_quick_guide(champion_name)
-                
+
                 # 将该攻略存入全局变量，方便用户在进入游戏前随时查看
                 _global_strategy = result
                 _hextech_history = []
-                
+
                 # 在主线程中更新显示
                 self.root.after(0, lambda: self._show_global_result(result))
             except Exception as e:
                 log.error(f"极速分析出错: {e}")
                 self.root.after(0, lambda: self._show_global_result(f"❌ 分析出错:\n{e}"))
             finally:
-                _is_analyzing = False
+                _unlock_global()
                 self.root.after(0, self._restore_ui_state)
-                
+
         t = threading.Thread(target=_bg_task, daemon=True)
         t.start()
 
     def _run_pure_data_guide(self, champion_name: str):
         """纯 ApexLol 数据查表模式（无需 AI 也无需 LCU），直接展示海克斯方案。"""
-        global _is_analyzing
-        _is_analyzing = True
+        if not _try_lock_global():
+            return
         self.status_label.configure(text="📊 纯数据模式查表中...")
 
         def _bg_task():
             try:
-                from apexlol_data import extract_top_synergies, resolve_champion_id
-                # 先尝试解析英雄别名
+                from apexlol_data import extract_top_synergies, resolve_champion_id, is_category
+
+                # 先看用户是不是输了「ADC」「打野」之类的非英雄分类，给明确提示
+                category_hint = is_category(champion_name)
+                if category_hint:
+                    content = (
+                        f"## ⚠️ 这不是英雄名\n\n"
+                        f"**你输入了**: `{champion_name}`\n\n"
+                        f"{category_hint}\n\n"
+                        f"---\n\n请点 ✏️ 纠错按钮重新输入具体英雄名（中英文别名都行）。"
+                    )
+                    self.root.after(0, lambda: self._show_global_result(content))
+                    log.info(f"[纯数据] 用户输入分类词 '{champion_name}'，已提示")
+                    return
+
+                # 解析英雄别名
                 resolved = resolve_champion_id(champion_name)
                 lookup_name = resolved if resolved else champion_name
 
@@ -364,7 +459,7 @@ class App:
                 log.error(f"纯数据查表失败: {e}")
                 self.root.after(0, lambda: self._show_global_result(f"❌ 纯数据查表失败:\n{e}"))
             finally:
-                _is_analyzing = False
+                _unlock_global()
                 self.root.after(0, self._restore_ui_state)
 
         t = threading.Thread(target=_bg_task, daemon=True)
@@ -372,8 +467,7 @@ class App:
 
     def _on_fix(self):
         """手动指定英雄：3级降级策略 — LCU全局 → AI极速前瞻 → 纯数据查表"""
-        global _is_analyzing
-        if _is_analyzing:
+        if _is_busy():
             return
         import tkinter.simpledialog as sd
         self.root.lift()
@@ -381,9 +475,22 @@ class App:
         name = sd.askstring(T("fix_prompt_title"), T("fix_prompt_msg"), parent=self.root)
         if name and name.strip():
             cmd = name.strip()
+
+            # 早拦截：用户输了"ADC""打野""刺客"等定位/种族词，三个分析级别都没意义
+            try:
+                from apexlol_data import is_category
+                hint = is_category(cmd)
+                if hint:
+                    from tkinter import messagebox
+                    log.info(f"[指定英雄] 拦截分类词 '{cmd}': {hint}")
+                    messagebox.showwarning("⚠️ 这不是英雄名", hint, parent=self.root)
+                    return
+            except Exception:
+                pass  # is_category 失败不致命，继续走原流程
+
             log.info(f"用户手动指定英雄: {cmd}")
             self._locked_champion = cmd
-            
+
             # ===== 第1级：尝试 LCU + AI 全局攻略 =====
             try:
                 from lcu_client import get_live_team_rosters, get_loading_screen_rosters
@@ -394,21 +501,21 @@ class App:
                     return
             except Exception as e:
                 log.warning(f"[指定英雄] LCU 不可用: {e}")
-            
+
             # ===== 第2级：尝试 AI 极速前瞻（无需 LCU） =====
             try:
-                from config import GEMINI_API_KEY
-                if GEMINI_API_KEY:
+                from config import LLM_ENABLED
+                if LLM_ENABLED:
                     log.info("[指定英雄] 路径B: AI 极速前瞻（无 LCU 阵容）")
                     self._run_quick_guide(cmd)
                     return
             except Exception:
                 pass
-            
+
             # ===== 第3级：纯 ApexLol 数据查表（无需 AI 也无需 LCU） =====
             log.info("[指定英雄] 路径C: 纯 ApexLol 数据查表（无 AI 模式）")
             self._run_pure_data_guide(cmd)
-                
+
         elif name is not None:
             from tkinter import messagebox
             messagebox.showwarning("⚠️", T("fix_error"), parent=self.root)
@@ -417,16 +524,16 @@ class App:
 
     # ==================== 海克斯分析 ====================
     def _on_hextech(self):
-        global _is_hextech_analyzing, _global_strategy
-        if _is_hextech_analyzing:
-            return
+        global _global_strategy
 
         # 需要先有全局攻略
         if _global_strategy is None:
             self.status_label.configure(text=T("hextech_no_global"))
             return
 
-        _is_hextech_analyzing = True
+        # 原子获取海克斯分析槽（同时挡掉全局分析在跑的情况）
+        if not _try_lock_hextech():
+            return
 
         self.btn_hextech.configure(text=T("btn_hextech_analyzing"), state=tk.DISABLED)
         self.status_label.configure(text=T("status_hextech_analyzing"))
@@ -447,7 +554,6 @@ class App:
         thread.start()
 
     def _run_hextech_analysis(self):
-        global _is_hextech_analyzing
         try:
             t0 = _time.time()
             log.info("⚡ 开始海克斯分析")
@@ -480,7 +586,7 @@ class App:
             self.root.after(0, lambda: self._show_hextech_result(
                 f"❌ 海克斯分析失败\n\n{str(e)}"))
         finally:
-            _is_hextech_analyzing = False
+            _unlock_hextech()
             self.root.after(0, self._restore_hextech_btn)
 
     def _restore_hextech_btn(self):
@@ -607,70 +713,223 @@ class App:
 
         threading.Thread(target=_bg, daemon=True, name="ApexLolAutoRefresh").start()
 
-    def _on_update_data(self):
-        """点击 🔄 数据按钮：在后台爬取 apexlol.info 数据。"""
-        if hasattr(self, '_data_updating') and self._data_updating:
-            return
-        self._data_updating = True
+    def trigger_data_update(self, extra_progress=None, on_done=None) -> bool:
+        """手动/外部触发的 ApexLol 数据更新（在后台线程跑，更新浮动栏 status_label）。
 
-        self.btn_data.configure(text=T("btn_data_updating"), state=tk.DISABLED)
+        Args:
+            extra_progress: 可选回调 fn(current, total, champion_name)，由调用方
+                （如设置对话框）注册以同步显示进度。回调在主线程被调用。
+            on_done: 可选回调 fn(success: bool)，更新结束后在主线程调用一次。
+
+        Returns:
+            True 表示已成功启动更新；False 表示已有更新在跑被忽略。
+        """
+        if getattr(self, "_data_updating", False):
+            return False
+        self._data_updating = True
         self.status_label.configure(text=T("status_data_updating"))
 
-        thread = threading.Thread(target=self._run_data_update, daemon=True)
-        thread.start()
+        def _run():
+            ok = False
+            try:
+                from apexlol_scraper import scrape_all_champions
+                from apexlol_data import load_cache
 
-    def _run_data_update(self):
-        """后台执行数据爬取。"""
-        try:
-            from apexlol_scraper import scrape_all_champions
-            from apexlol_data import load_cache
+                def progress(current, total, name):
+                    def _update():
+                        self.status_label.configure(
+                            text=T("status_data_progress").format(current, total, name))
+                        if extra_progress is not None:
+                            try:
+                                extra_progress(current, total, name)
+                            except Exception:
+                                pass
+                    self.root.after(0, _update)
 
-            def progress(current, total, name):
+                scrape_all_champions(APEXLOL_CACHE_DIR, progress_callback=progress)
+                load_cache(APEXLOL_CACHE_DIR)
+                ok = True
+
                 self.root.after(0, lambda: self.status_label.configure(
-                    text=T("status_data_progress").format(current, total, name)))
+                    text=T("status_data_done")))
+                log.info("[ApexLol] [OK] 数据更新完成")
 
-            scrape_all_champions(APEXLOL_CACHE_DIR, progress_callback=progress)
-            load_cache(APEXLOL_CACHE_DIR)
+            except Exception as e:
+                log.error(f"[ApexLol] 数据更新失败: {e}")
+                self.root.after(0, lambda: self.status_label.configure(
+                    text=T("status_data_error")))
+            finally:
+                self._data_updating = False
+                if on_done is not None:
+                    self.root.after(0, lambda: on_done(ok))
 
-            self.root.after(0, lambda: self.status_label.configure(
-                text=T("status_data_done")))
-            log.info("[ApexLol] [OK] 数据更新完成")
+        threading.Thread(target=_run, daemon=True, name="ApexLolUpdate").start()
+        return True
 
+    def is_data_updating(self) -> bool:
+        """供设置对话框查询当前是否有更新在跑。"""
+        return getattr(self, "_data_updating", False)
+
+    # ==================== ARAM Mayhem 数据 ====================
+    def _init_mayhem_cache(self):
+        """启动时加载 ARAM Mayhem 缓存，过期或即将过期时自动后台刷新。
+
+        独立于 ApexLol 的初始化逻辑（共用同一份模式），允许两份缓存并发刷新。
+        """
+        try:
+            from arammayhem_data import load_cache, get_cache_info
+            import os
+
+            cache_file = os.path.join(ARAMMAYHEM_CACHE_DIR, "arammayhem_data.json")
+            cache_file_exists = os.path.exists(cache_file)
+
+            if cache_file_exists:
+                load_cache(ARAMMAYHEM_CACHE_DIR)
+                info = get_cache_info(ARAMMAYHEM_CACHE_DIR)
+                age_hours = info.get("age_hours", 0)
+                ttl_hours = ARAMMAYHEM_CACHE_TTL_DAYS * 24
+                remaining_hours = ttl_hours - age_hours
+                log.info(
+                    f"[Mayhem] 缓存已加载 ({info.get('champion_count', 0)} 英雄, "
+                    f"{age_hours:.0f}h 前更新, 剩余 {remaining_hours:.0f}h)"
+                )
+
+                if remaining_hours <= 0:
+                    log.info("[Mayhem] 缓存已过期，自动后台刷新中...")
+                    self._auto_refresh_mayhem()
+                elif remaining_hours <= 24:
+                    log.info(f"[Mayhem] 缓存将在 {remaining_hours:.0f}h 后过期，预防性后台刷新中...")
+                    self._auto_refresh_mayhem()
+            else:
+                log.info("[Mayhem] 首次使用，自动后台爬取数据...")
+                self._auto_refresh_mayhem()
         except Exception as e:
-            log.error(f"[ApexLol] 数据更新失败: {e}")
-            self.root.after(0, lambda: self.status_label.configure(
-                text=T("status_data_error")))
-        finally:
-            self._data_updating = False
-            self.root.after(0, lambda: self.btn_data.configure(
-                text=T("btn_data"), state=tk.NORMAL))
+            log.warning(f"[Mayhem] 缓存初始化失败: {e}")
+
+    def _auto_refresh_mayhem(self):
+        """静默后台刷新 ARAM Mayhem 数据（不阻塞主线程，不弹窗）。"""
+        if getattr(self, "_mayhem_updating", False):
+            return
+        self._mayhem_updating = True
+        log.info("[Mayhem] 静默后台刷新启动")
+
+        def _bg():
+            try:
+                from arammayhem_scraper import scrape_all_builds
+                from arammayhem_data import load_cache
+                scrape_all_builds(ARAMMAYHEM_CACHE_DIR)
+                load_cache(ARAMMAYHEM_CACHE_DIR)
+                log.info("[Mayhem] [OK] 静默后台刷新完成")
+            except Exception as e:
+                log.error(f"[Mayhem] 静默后台刷新失败: {e}")
+            finally:
+                self._mayhem_updating = False
+
+        threading.Thread(target=_bg, daemon=True, name="MayhemAutoRefresh").start()
+
+    def trigger_mayhem_update(self, extra_progress=None, on_done=None) -> bool:
+        """手动/外部触发的 Mayhem 数据更新（在后台线程跑，独立锁，跟 ApexLol 互不干扰）。
+
+        Args:
+            extra_progress: 可选回调 fn(current, total, champion_name)，主线程调用
+            on_done: 可选回调 fn(success: bool)，主线程调用
+
+        Returns:
+            True 表示已成功启动；False 表示已有 Mayhem 更新在跑被忽略。
+        """
+        if getattr(self, "_mayhem_updating", False):
+            return False
+        self._mayhem_updating = True
+
+        def _run():
+            ok = False
+            try:
+                from arammayhem_scraper import scrape_all_builds
+                from arammayhem_data import load_cache
+
+                def progress(current, total, name):
+                    def _update():
+                        if extra_progress is not None:
+                            try:
+                                extra_progress(current, total, name)
+                            except Exception:
+                                pass
+                    self.root.after(0, _update)
+
+                scrape_all_builds(ARAMMAYHEM_CACHE_DIR, progress_callback=progress)
+                load_cache(ARAMMAYHEM_CACHE_DIR)
+                ok = True
+                log.info("[Mayhem] [OK] 数据更新完成")
+            except Exception as e:
+                log.error(f"[Mayhem] 数据更新失败: {e}")
+            finally:
+                self._mayhem_updating = False
+                if on_done is not None:
+                    self.root.after(0, lambda: on_done(ok))
+
+        threading.Thread(target=_run, daemon=True, name="MayhemUpdate").start()
+        return True
+
+    def is_mayhem_updating(self) -> bool:
+        """供设置对话框查询当前 Mayhem 是否有更新在跑。"""
+        return getattr(self, "_mayhem_updating", False)
 
     # ==================== 显示全局攻略 ====================
-    def _show_global_result(self, content: str):
-        """在 Toplevel 窗口中显示全局攻略内容。"""
+    # ==================== 显示全局攻略 ====================
+    def _create_overlay(
+        self,
+        *,
+        kind: str,
+        content: str,
+        title_text: str,
+        title_bg: str,
+        title_fg: str,
+        accent_color: str,
+        width: int,
+        max_height: int,
+        height_padding: int,
+        position: tuple,
+        show_hint: bool,
+        on_close,
+        bottom_widgets=None,
+    ) -> None:
+        """通用 Toplevel 攻略窗口工厂——给 _show_global_result / _show_hextech_result 共享。
+
+        Args:
+            kind: "global" 或 "hextech"，决定属性挂到 self.overlay 还是 self.hextech_overlay
+            content: 要渲染的 Markdown 文本
+            title_text / title_bg / title_fg: 标题栏文字与配色
+            accent_color: 边框 + 顶部分隔线颜色
+            width / max_height / height_padding: 尺寸（高度上限 + 计算高度时加的余量）
+            position: (x, y) 屏幕坐标
+            show_hint: 是否在标题栏右侧显示 "Esc 隐藏 | 可拖拽" 提示
+            on_close: 点 ✕ / 按 Esc 时调用的回调
+            bottom_widgets: 可选回调 fn(bottom_frame) —— 让调用方往底部 frame 里塞按钮
+        """
+        attr_top = "overlay" if kind == "global" else "hextech_overlay"
+        attr_text = "overlay_text" if kind == "global" else "hextech_text"
+        attr_visible = "_overlay_visible" if kind == "global" else "_hextech_visible"
+
         # 销毁旧窗口
-        if self.overlay:
+        existing = getattr(self, attr_top, None)
+        if existing:
             try:
-                self.overlay.destroy()
+                existing.destroy()
             except Exception:
                 pass
-            self.overlay = None
-            self._overlay_visible = False
+            setattr(self, attr_top, None)
+            setattr(self, attr_visible, False)
 
         # 创建新 Toplevel
-        self.overlay = tk.Toplevel(self.root)
-        self.overlay.title("ARAM 攻略")
-        self.overlay.configure(bg=OVERLAY_BG_COLOR)
-        self.overlay.attributes("-topmost", True)
-        self.overlay.attributes("-alpha", OVERLAY_OPACITY)
-        self.overlay.overrideredirect(True)
+        top = tk.Toplevel(self.root)
+        top.title(title_text)
+        top.configure(bg=OVERLAY_BG_COLOR)
+        top.attributes("-topmost", True)
+        top.attributes("-alpha", OVERLAY_OPACITY)
+        top.overrideredirect(True)
 
-        screen_w = self.root.winfo_screenwidth()
-        x_pos = screen_w - OVERLAY_WIDTH - 20
-        y_pos = 40
-
-        # 标题栏
-        title_frame = tk.Frame(self.overlay, bg="#0d0d1a", cursor="fleur")
+        # ===== 标题栏 + 拖拽 =====
+        title_frame = tk.Frame(top, bg=title_bg, cursor="fleur")
         title_frame.pack(fill=tk.X)
 
         drag_data = {"x": 0, "y": 0}
@@ -680,16 +939,16 @@ class App:
             drag_data["y"] = e.y
 
         def on_drag(e):
-            x = self.overlay.winfo_x() + e.x - drag_data["x"]
-            y = self.overlay.winfo_y() + e.y - drag_data["y"]
-            self.overlay.geometry(f"+{x}+{y}")
+            x = top.winfo_x() + e.x - drag_data["x"]
+            y = top.winfo_y() + e.y - drag_data["y"]
+            top.geometry(f"+{x}+{y}")
 
         title_frame.bind("<Button-1>", start_drag)
         title_frame.bind("<B1-Motion>", on_drag)
 
         title_label = tk.Label(
-            title_frame, text=T("overlay_title"),
-            bg="#0d0d1a", fg=OVERLAY_TITLE_COLOR,
+            title_frame, text=title_text,
+            bg=title_bg, fg=title_fg,
             font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
             padx=12, pady=8,
         )
@@ -697,71 +956,94 @@ class App:
         title_label.bind("<Button-1>", start_drag)
         title_label.bind("<B1-Motion>", on_drag)
 
-        # 关闭按钮
+        # 关闭按钮（hover 配色统一为 #2a0a0f，leave 时回到对应 title_bg）
         close_btn = tk.Label(
-            title_frame, text="  ✕  ", bg="#0d0d1a", fg="#ff4757",
+            title_frame, text="  ✕  ", bg=title_bg, fg="#ff4757",
             font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
             cursor="hand2",
         )
         close_btn.pack(side=tk.RIGHT, padx=4)
-        close_btn.bind("<Button-1>", lambda e: self._hide_overlay())
+        close_btn.bind("<Button-1>", lambda e: on_close())
         close_btn.bind("<Enter>", lambda e: close_btn.configure(bg="#2a0a0f"))
-        close_btn.bind("<Leave>", lambda e: close_btn.configure(bg="#0d0d1a"))
+        close_btn.bind("<Leave>", lambda e, _bg=title_bg: close_btn.configure(bg=_bg))
 
-        hint = tk.Label(
-            title_frame, text=T("overlay_hint"),
-            bg="#0d0d1a", fg="#666680",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2),
-        )
-        hint.pack(side=tk.RIGHT, padx=8)
+        if show_hint:
+            tk.Label(
+                title_frame, text=T("overlay_hint"),
+                bg=title_bg, fg="#666680",
+                font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2),
+            ).pack(side=tk.RIGHT, padx=8)
 
-        # 分隔线
-        tk.Frame(self.overlay, bg=OVERLAY_ACCENT_COLOR, height=2).pack(fill=tk.X)
+        # ===== 顶部分隔线 =====
+        tk.Frame(top, bg=accent_color, height=2).pack(fill=tk.X)
 
-        # 内容区
-        content_frame = tk.Frame(self.overlay, bg=OVERLAY_BG_COLOR)
+        # ===== 内容区（Text + 滚动条）=====
+        content_frame = tk.Frame(top, bg=OVERLAY_BG_COLOR)
         content_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
 
         scrollbar = tk.Scrollbar(content_frame, orient=tk.VERTICAL, bg=OVERLAY_BG_COLOR)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.overlay_text = tk.Text(
+        text_widget = tk.Text(
             content_frame, bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR,
             font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE), wrap=tk.WORD,
             relief=tk.FLAT, padx=12, pady=8, insertbackground=OVERLAY_FG_COLOR,
             yscrollcommand=scrollbar.set, cursor="arrow",
             spacing1=2, spacing3=2,
         )
-        self.overlay_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.overlay_text.yview)
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=text_widget.yview)
 
-        # 文本样式
-        self._setup_text_tags(self.overlay_text)
+        self._setup_text_tags(text_widget)
+        self._render_markdown(text_widget, content)
+        text_widget.configure(state=tk.DISABLED)
 
-        # 渲染内容
-        self._render_markdown(self.overlay_text, content)
-        self.overlay_text.configure(state=tk.DISABLED)
-
-        # 底部
-        bottom = tk.Frame(self.overlay, bg="#0d0d1a")
+        # ===== 底部 =====
+        bottom = tk.Frame(top, bg=title_bg)
         bottom.pack(fill=tk.X)
-        tk.Label(
-            bottom, text=T("overlay_footer"),
-            bg="#0d0d1a", fg="#444460",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2), pady=4,
-        ).pack()
+        if bottom_widgets is not None:
+            bottom_widgets(bottom)
+        else:
+            tk.Label(
+                bottom, text=T("overlay_footer"),
+                bg=title_bg, fg="#444460",
+                font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE - 2), pady=4,
+            ).pack()
 
-        # 快捷键
-        self.overlay.bind("<Escape>", lambda e: self._hide_overlay())
+        # ===== 快捷键 =====
+        top.bind("<Escape>", lambda e: on_close())
 
-        # 大小和位置
-        self.overlay.update_idletasks()
-        h = min(self.overlay_text.winfo_reqheight() + 80, OVERLAY_MAX_HEIGHT)
-        self.overlay.geometry(f"{OVERLAY_WIDTH}x{h}+{x_pos}+{y_pos}")
-        self.overlay.configure(highlightbackground=OVERLAY_ACCENT_COLOR,
-                               highlightthickness=1)
-        self._overlay_visible = True
+        # ===== 尺寸与位置 =====
+        top.update_idletasks()
+        h = min(text_widget.winfo_reqheight() + height_padding, max_height)
+        x_pos, y_pos = position
+        top.geometry(f"{width}x{h}+{x_pos}+{y_pos}")
+        top.configure(highlightbackground=accent_color, highlightthickness=1)
 
+        # ===== 把状态写回 self =====
+        setattr(self, attr_top, top)
+        setattr(self, attr_text, text_widget)
+        setattr(self, attr_visible, True)
+
+    def _show_global_result(self, content: str):
+        """在 Toplevel 窗口中显示全局攻略内容。"""
+        screen_w = self.root.winfo_screenwidth()
+        x_pos = screen_w - OVERLAY_WIDTH - 20
+
+        self._create_overlay(
+            kind="global",
+            content=content,
+            title_text=T("overlay_title"),
+            title_bg="#0d0d1a",
+            title_fg=OVERLAY_TITLE_COLOR,
+            accent_color=OVERLAY_ACCENT_COLOR,
+            width=OVERLAY_WIDTH,
+            max_height=OVERLAY_MAX_HEIGHT,
+            height_padding=80,
+            position=(x_pos, 40),
+            show_hint=True,
+            on_close=self._hide_overlay,
+        )
         self.status_label.configure(text=T("status_done"))
 
     # ==================== 显示海克斯建议 ====================
@@ -770,130 +1052,44 @@ class App:
         # 先恢复主按钮栏
         self.root.deiconify()
 
-        # 销毁旧海克斯面板
-        if self.hextech_overlay:
-            try:
-                self.hextech_overlay.destroy()
-            except Exception:
-                pass
-            self.hextech_overlay = None
-            self._hextech_visible = False
-
         # 保存最新分析结果用于关闭时提取符文名
         self._last_hextech_result = content
 
-        # 创建新 Toplevel（位于屏幕左侧中部）
-        self.hextech_overlay = tk.Toplevel(self.root)
-        self.hextech_overlay.title("⚡ 海克斯")
-        self.hextech_overlay.configure(bg=OVERLAY_BG_COLOR)
-        self.hextech_overlay.attributes("-topmost", True)
-        self.hextech_overlay.attributes("-alpha", OVERLAY_OPACITY)
-        self.hextech_overlay.overrideredirect(True)
-
-        hex_width = 420
-        x_pos = 20
         screen_h = self.root.winfo_screenheight()
         y_pos = max(40, (screen_h - 500) // 2)
 
-        # 标题栏（红色调，区别于全局面板）
-        title_frame = tk.Frame(self.hextech_overlay, bg="#1a0d0d", cursor="fleur")
-        title_frame.pack(fill=tk.X)
+        def _build_bottom(bottom):
+            # 🔄 再截一次
+            tk.Button(
+                bottom, text=T("hextech_btn_retry"), command=self._on_hextech,
+                bg="#1a0d0d", fg="#ffd700", activebackground="#2a2a4e",
+                activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
+                padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+            ).pack(side=tk.LEFT, padx=8, pady=4)
+            # ✕ 关闭（确认选择）
+            tk.Button(
+                bottom, text=T("hextech_btn_close"),
+                command=lambda: self._on_hextech_close(content),
+                bg="#1a0d0d", fg="#ff4757", activebackground="#2a2a4e",
+                activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
+                padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
+            ).pack(side=tk.RIGHT, padx=8, pady=4)
 
-        drag_data = {"x": 0, "y": 0}
-
-        def start_drag(e):
-            drag_data["x"] = e.x
-            drag_data["y"] = e.y
-
-        def on_drag(e):
-            x = self.hextech_overlay.winfo_x() + e.x - drag_data["x"]
-            y = self.hextech_overlay.winfo_y() + e.y - drag_data["y"]
-            self.hextech_overlay.geometry(f"+{x}+{y}")
-
-        title_frame.bind("<Button-1>", start_drag)
-        title_frame.bind("<B1-Motion>", on_drag)
-
-        title_label = tk.Label(
-            title_frame, text=T("hextech_title"),
-            bg="#1a0d0d", fg="#ff6b6b",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
-            padx=12, pady=8,
+        self._create_overlay(
+            kind="hextech",
+            content=content,
+            title_text=T("hextech_title"),
+            title_bg="#1a0d0d",
+            title_fg="#ff6b6b",
+            accent_color="#ff6b6b",
+            width=420,
+            max_height=500,
+            height_padding=100,
+            position=(20, y_pos),
+            show_hint=False,
+            on_close=lambda: self._on_hextech_close(content),
+            bottom_widgets=_build_bottom,
         )
-        title_label.pack(side=tk.LEFT)
-        title_label.bind("<Button-1>", start_drag)
-        title_label.bind("<B1-Motion>", on_drag)
-
-        # 关闭按钮
-        close_btn = tk.Label(
-            title_frame, text="  ✕  ", bg="#1a0d0d", fg="#ff4757",
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE + 2, "bold"),
-            cursor="hand2",
-        )
-        close_btn.pack(side=tk.RIGHT, padx=4)
-        close_btn.bind("<Button-1>", lambda e: self._on_hextech_close(content))
-        close_btn.bind("<Enter>", lambda e: close_btn.configure(bg="#2a0a0f"))
-        close_btn.bind("<Leave>", lambda e: close_btn.configure(bg="#1a0d0d"))
-
-        # 分隔线（红色调）
-        tk.Frame(self.hextech_overlay, bg="#ff6b6b", height=2).pack(fill=tk.X)
-
-        # 内容区
-        content_frame = tk.Frame(self.hextech_overlay, bg=OVERLAY_BG_COLOR)
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-
-        scrollbar = tk.Scrollbar(content_frame, orient=tk.VERTICAL, bg=OVERLAY_BG_COLOR)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.hextech_text = tk.Text(
-            content_frame, bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR,
-            font=(OVERLAY_FONT_FAMILY, OVERLAY_FONT_SIZE), wrap=tk.WORD,
-            relief=tk.FLAT, padx=12, pady=8, insertbackground=OVERLAY_FG_COLOR,
-            yscrollcommand=scrollbar.set, cursor="arrow",
-            spacing1=2, spacing3=2,
-        )
-        self.hextech_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.hextech_text.yview)
-
-        # 文本样式
-        self._setup_text_tags(self.hextech_text)
-
-        # 渲染内容
-        self._render_markdown(self.hextech_text, content)
-        self.hextech_text.configure(state=tk.DISABLED)
-
-        # 底部按钮栏
-        bottom = tk.Frame(self.hextech_overlay, bg="#1a0d0d")
-        bottom.pack(fill=tk.X)
-
-        # 🔄 再截一次
-        retry_btn = tk.Button(
-            bottom, text=T("hextech_btn_retry"), command=self._on_hextech,
-            bg="#1a0d0d", fg="#ffd700", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
-            padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        retry_btn.pack(side=tk.LEFT, padx=8, pady=4)
-
-        # ✕ 关闭（确认选择）
-        close_btn2 = tk.Button(
-            bottom, text=T("hextech_btn_close"), command=lambda: self._on_hextech_close(content),
-            bg="#1a0d0d", fg="#ff4757", activebackground="#2a2a4e",
-            activeforeground="#ffffff", font=("Microsoft YaHei UI", 10, "bold"),
-            padx=12, pady=6, cursor="hand2", relief=tk.FLAT, borderwidth=0,
-        )
-        close_btn2.pack(side=tk.RIGHT, padx=8, pady=4)
-
-        # 快捷键
-        self.hextech_overlay.bind("<Escape>", lambda e: self._on_hextech_close(content))
-
-        # 大小和位置
-        self.hextech_overlay.update_idletasks()
-        h = min(self.hextech_text.winfo_reqheight() + 100, 500)
-        self.hextech_overlay.geometry(f"{hex_width}x{h}+{x_pos}+{y_pos}")
-        self.hextech_overlay.configure(highlightbackground="#ff6b6b",
-                                       highlightthickness=1)
-        self._hextech_visible = True
-
         self.status_label.configure(text=T("status_hextech_done"))
 
     # ==================== 全局攻略 显示/隐藏 ====================
@@ -1005,6 +1201,27 @@ class App:
         except Exception:
             pass
 
+    def _on_settings(self):
+        try:
+            from settings_ui import open_settings_dialog
+            open_settings_dialog(self.root, self)
+        except Exception as e:
+            log.error(f"[设置] 打开失败: {e}")
+            from tkinter import messagebox
+            messagebox.showerror("⚠️", str(e), parent=self.root)
+
+    def _on_exit(self):
+        log.info("[退出] 用户点击退出按钮")
+        try:
+            print(f"\n{T('console_bye')}")
+        except Exception:
+            pass
+        try:
+            self.root.destroy()
+        except Exception:
+            pass
+        sys.exit(0)
+
     def _start_drag(self, event):
         self._drag_data["x"] = event.x
         self._drag_data["y"] = event.y
@@ -1013,8 +1230,6 @@ class App:
         x = self.root.winfo_x() + event.x - self._drag_data["x"]
         y = self.root.winfo_y() + event.y - self._drag_data["y"]
         self.root.geometry(f"+{x}+{y}")
-
-    # ==================== 全局热键 ====================
 
     def run(self):
         self.root.mainloop()

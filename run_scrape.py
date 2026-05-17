@@ -1,6 +1,7 @@
 import os
 from apexlol_scraper import scrape_all_champions
+from config import APEXLOL_CACHE_DIR
 
-cache_dir = "C:\\Users\\Administrator\\.gemini\\antigravity\\scratch\\aram-assistant\\apexlol_cache"
-scrape_all_champions(cache_dir)
+scrape_all_champions(APEXLOL_CACHE_DIR)
 print("Finished scraping all champions!")
+print(f"Cache dir: {APEXLOL_CACHE_DIR}")
